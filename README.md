@@ -10,7 +10,7 @@ Built for the Nebius x NVIDIA Global AI Hackathon. It runs on NVIDIA Nemotron mo
 
 ## What it does
 
-1. **Takes an incident.** A sample incident, a generated one, or your own bundle of logs, traces, commits, config changes and infrastructure events ([bundle format](static/copilot/bundle-format.html)).
+1. **Takes an incident.** A sample incident, a generated one, or your own. `python -m copilot bundle` builds one from your services' git history and log files; the [bundle format](static/copilot/bundle-format.html) also takes traces, config changes and infrastructure events.
 2. **Investigates it blind.** The agent has read-only evidence tools and nothing else. Each lookup becomes a numbered exhibit: E1, E2, E3.
 3. **Names the cause.** It commits to a root cause and the chain of failures that followed, citing exhibits for each hop, and says what it ruled out and what it could not settle.
 4. **Checks the wider world.** It searches for published guidance on that failure mode, without sending anything incident-specific to the search engine.
@@ -65,7 +65,8 @@ uvicorn app:app --port 7860
 # One investigation from the command line
 python -m copilot investigate --seed 42 --difficulty medium --out postmortem.md
 
-# Your own incident
+# Your own incident: build a bundle from git history and log files, then investigate it
+python -m copilot bundle --start 2026-10-01T10:00:00Z --end 2026-10-01T10:20:00Z     --repo api=../api --repo web=../web --logs api=logs/api.log     --services services.json --out my_incident.json
 python -m copilot investigate --file my_incident.json --out postmortem.md
 
 # Score the investigator on 20 generated incidents
@@ -90,6 +91,7 @@ copilot/            the product
   investigator.py   triage, diagnosis, validation, grading
   research.py       Tavily search with private terms kept out of queries
   report.py         the postmortem document
+  bundle.py         build an incident bundle from git repos and log files
   bench.py          benchmark runner
 web/copilot_api.py  HTTP API and live event stream
 static/copilot/     the UI

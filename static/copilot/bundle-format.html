@@ -23,6 +23,11 @@
     <h1>Incident bundle format</h1>
     <p>A bundle is one JSON file holding the telemetry around an incident. Export it from your own systems, upload it on the home page, and Hindsight investigates it the same way it investigates the samples. Uploaded bundles are never graded, and nothing in them is sent to web search.</p>
 
+    <h2>Build one from what you already have</h2>
+    <p>The command line reads commits (with diffs) from each service's git repository and log lines from plain-text or JSON-lines files, covering the 24 hours before the incident:</p>
+<pre><code>python -m copilot bundle     --start 2026-10-01T10:00:00Z --end 2026-10-01T10:20:00Z     --repo api=../api --repo web=../web     --logs api=logs/api.log --logs web=logs/web.log     --services services.json --out incident.json</code></pre>
+    <p><code>services.json</code> maps each service to what it depends on, for example <code>{"web": ["api"], "api": []}</code>. Config changes, infrastructure events and traces can be added with <code>--extra</code>. Or write the file by hand:</p>
+
     <h2>Required</h2>
     <table>
       <thead><tr><th>Key</th><th>What it holds</th></tr></thead>

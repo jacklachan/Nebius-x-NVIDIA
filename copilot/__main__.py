@@ -3,6 +3,7 @@
     python -m copilot investigate --seed 42 --difficulty medium --out postmortem.md
     python -m copilot investigate --task task2_cascade_chain
     python -m copilot investigate --file my_incident.json
+    python -m copilot bundle --start ... --end ... --repo api=../api --logs api=api.log
     python -m copilot models
     python -m copilot bench --seeds 0-19 --difficulty medium --label routed
 """
@@ -19,6 +20,7 @@ from pathlib import Path
 from dataclasses import replace
 
 from copilot import incidents
+from copilot.bundle import BundleError, _named, build_bundle, describe
 from copilot.bench import BASELINES, parse_seeds, run_baseline, run_benchmark
 from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
@@ -164,6 +166,21 @@ async def _bench(args: argparse.Namespace) -> int:
     return 1 if result["summary"]["errors"] == result["summary"]["incidents"] else 0
 
 
+def _bundle(args: argparse.Namespace) -> int:
+    bundle = build_bundle(
+        args.start, args.end,
+        repos=_named(args.repo, "repo"), logs=_named(args.logs, "logs"),
+        services_file=args.services, extra_file=args.extra,
+        description=args.description, lookback_hours=args.lookback_hours)
+    incidents.from_bundle(bundle)  # fail here rather than at investigation time
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(json.dumps(bundle, indent=1), encoding="utf-8")
+    print(describe(bundle))
+    print(f"Bundle written to {args.out}")
+    print(f"Next: python -m copilot investigate --file {args.out} --out postmortem.md")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="copilot", description=__doc__.splitlines()[0])
@@ -192,14 +209,30 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("--concurrency", type=int, default=2)
     bench.add_argument("--out", help="write full results (JSON) to this path")
 
+    bundle = sub.add_parser("bundle", help="build an incident bundle from git repos and log files")
+    bundle.add_argument("--start", required=True, help="incident start, ISO 8601")
+    bundle.add_argument("--end", required=True, help="incident end, ISO 8601")
+    bundle.add_argument("--repo", action="append", default=[], metavar="SERVICE=PATH",
+                        help="a service's git repository; repeat per service")
+    bundle.add_argument("--logs", action="append", default=[], metavar="SERVICE=FILE",
+                        help="a service's log file; repeat per service")
+    bundle.add_argument("--services", help='JSON file mapping each service to what it depends on')
+    bundle.add_argument("--extra", help="JSON file with config_changes, infra_events or traces")
+    bundle.add_argument("--description", default="", help="what was observed, in a sentence")
+    bundle.add_argument("--lookback-hours", type=int, default=24,
+                        help="how far before the incident to collect commits and logs")
+    bundle.add_argument("--out", default="incident.json")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "investigate":
             return asyncio.run(_investigate(args))
+        if args.command == "bundle":
+            return _bundle(args)
         if args.command == "bench":
             return asyncio.run(_bench(args))
         return asyncio.run(_models())
-    except (incidents.IncidentError, LLMError, ValueError) as exc:
+    except (incidents.IncidentError, LLMError, BundleError, ValueError) as exc:
         print(f"ERROR  {exc}", file=sys.stderr)
         return 1
 
