@@ -89,7 +89,9 @@ class Investigator:
         llm: ChatModel,
         max_triage_steps: int = MAX_TRIAGE_STEPS,
         researcher: Researcher | None = None,
+        write_report: bool = True,
     ) -> None:
+        self.write_report = write_report
         self.ws = workspace
         self.llm = llm
         self.researcher = researcher
@@ -120,6 +122,11 @@ class Investigator:
         if self.grade is not None:
             yield {"type": "grade", **self.grade}
 
+        if not self.write_report:
+            # Benchmark mode: the grade is what matters, skip the prose.
+            yield self._done_event()
+            return
+
         brief = self.ws.brief()
         if self.researcher is not None and self.diagnosis.root_cause_ids:
             yield {"type": "phase", "phase": "research"}
@@ -146,13 +153,17 @@ class Investigator:
         self.report = render_postmortem(
             brief, self.diagnosis, self.ws.evidence, self.narrative, usage, self.references)
         yield {"type": "report", "narrative": self.narrative, "markdown": self.report}
-        yield {
+        yield self._done_event()
+
+    def _done_event(self) -> dict[str, Any]:
+        assert self.diagnosis is not None
+        return {
             "type": "done",
             "diagnosis": self.diagnosis.as_dict(),
             "grade": self.grade,
             "evidence": [e.as_dict() for e in self.ws.evidence if e.ok],
             "references": [ref.as_dict() for ref in self.references],
-            "usage": usage,
+            "usage": self.llm.meter.snapshot(),
         }
 
     # --- stage 1: triage ---

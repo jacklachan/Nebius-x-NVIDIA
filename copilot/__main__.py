@@ -4,6 +4,7 @@
     python -m copilot investigate --task task2_cascade_chain
     python -m copilot investigate --file my_incident.json
     python -m copilot models
+    python -m copilot bench --seeds 0-19 --difficulty medium --label routed
 """
 
 from __future__ import annotations
@@ -14,8 +15,11 @@ import json
 import sys
 from pathlib import Path
 
+from dataclasses import replace
+
 from copilot import incidents
-from copilot.config import ROLES, load_dotenv, load_settings
+from copilot.bench import parse_seeds, run_benchmark
+from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
 from copilot.llm import LLMError, TokenFactoryClient
 from copilot.research import Researcher, TavilyClient
@@ -103,6 +107,36 @@ async def _models() -> int:
     return 0
 
 
+async def _bench(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    models = dict(settings.models)
+    if args.triage:
+        models[ROLE_TRIAGE] = args.triage
+    if args.reason:
+        models[ROLE_REASON] = args.reason
+    settings = replace(settings, models=models)
+
+    def show(row: dict) -> None:
+        if row["error"]:
+            print(f"  seed {row['seed']:>5}  ERROR {row['error'][:90]}")
+        else:
+            verdict = "correct" if row["cause_correct"] else "wrong  "
+            print(f"  seed {row['seed']:>5}  {verdict}  score {row['score']:.3f}  "
+                  f"{row['lookups']:>2} lookups  ${row['cost_usd']:.4f}  {row['seconds']}s")
+
+    result = await run_benchmark(
+        parse_seeds(args.seeds), args.difficulty,
+        lambda: TokenFactoryClient(settings), args.concurrency, show)
+    result.update(label=args.label, models={
+        ROLE_TRIAGE: models[ROLE_TRIAGE], ROLE_REASON: models[ROLE_REASON]})
+    print(json.dumps(result["summary"], indent=2))
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
+        print(f"Results written to {args.out}")
+    return 1 if result["summary"]["errors"] == result["summary"]["incidents"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="copilot", description=__doc__.splitlines()[0])
@@ -118,12 +152,23 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("models", help="check the configured models exist on Token Factory")
 
+    bench = sub.add_parser("bench", help="score the investigator on generated incidents")
+    bench.add_argument("--seeds", default="0-9", help="for example 0-19 or 3,7,42")
+    bench.add_argument("--difficulty", default="medium", choices=incidents.DIFFICULTIES)
+    bench.add_argument("--label", default="routed", help="name for this configuration")
+    bench.add_argument("--triage", help="override the triage model ID")
+    bench.add_argument("--reason", help="override the diagnosis model ID")
+    bench.add_argument("--concurrency", type=int, default=2)
+    bench.add_argument("--out", help="write full results (JSON) to this path")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "investigate":
             return asyncio.run(_investigate(args))
+        if args.command == "bench":
+            return asyncio.run(_bench(args))
         return asyncio.run(_models())
-    except (incidents.IncidentError, LLMError) as exc:
+    except (incidents.IncidentError, LLMError, ValueError) as exc:
         print(f"ERROR  {exc}", file=sys.stderr)
         return 1
 
