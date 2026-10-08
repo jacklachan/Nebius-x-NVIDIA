@@ -384,8 +384,8 @@
       <p class="verdict">Root cause ${g.cause_correct ? "correct" : "wrong"}</p>
       ${g.cause_correct ? "" : `<p class="truth">Actual cause: <code>${esc(g.ground_truth_cause)}</code></p>`}
       <table>${rows}</table>
-      <p class="truth">Scored by a deterministic rubric, not by a model. The investigator never saw the answer.</p>
-      ${run.brief && !/^seed_/.test(run.brief.incident_id) ? '<p class="truth">This hand-written incident labels its chain in free text, so chain accuracy here understates a correct answer. Root cause is the figure to read.</p>' : ""}</div>`;
+      <p class="truth">Scored by fixed rules, not by a model. The investigator never saw the answer. Grounding checks that it opened the change it blames and cited evidence that bears on the incident.</p>
+      ${run.brief && !/^seed_/.test(run.brief.incident_id) ? '<p class="truth">This hand-written incident labels its chain in free text, so the failure modes score understates a correct answer. Read root cause and failure path.</p>' : ""}</div>`;
   }
 
   function onResearch({ queries, references, queries_dropped_as_private: dropped }) {
