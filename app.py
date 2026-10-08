@@ -29,6 +29,7 @@ from models.action import Action
 from models.observation import Observation
 from models.state import EnvironmentState
 from engine.environment import PostmortemEnvironment
+from web.copilot_api import router as copilot_router
 from web.runner import router as live_router
 
 app = create_app(
@@ -111,6 +112,7 @@ async def metadata() -> dict[str, Any]:
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(live_router)
+app.include_router(copilot_router)
 
 
 @app.get("/", include_in_schema=False)
