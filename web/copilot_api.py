@@ -328,5 +328,29 @@ async def events(investigation_id: str, request: Request) -> StreamingResponse:
     )
 
 
+class BodyLimit:
+    """Refuse oversized uploads before they are read into memory.
+
+    Pure ASGI rather than a framework middleware so that streaming responses
+    (the event streams) pass through untouched.
+    """
+
+    def __init__(self, app: Any, prefix: str = "/api/copilot",
+                 max_bytes: int = 2 * MAX_BUNDLE_BYTES) -> None:
+        self.app, self.prefix, self.max_bytes = app, prefix, max_bytes
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        if scope["type"] == "http" and scope["path"].startswith(self.prefix):
+            length = dict(scope["headers"]).get(b"content-length", b"0")
+            if length.isdigit() and int(length) > self.max_bytes:
+                body = json.dumps({"detail": "Request body is too large."}).encode()
+                await send({"type": "http.response.start", "status": 413,
+                            "headers": [(b"content-type", b"application/json"),
+                                        (b"content-length", str(len(body)).encode())]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
 def _sse(event: dict[str, Any]) -> bytes:
     return f"event: {event['type']}\ndata: {json.dumps(event, default=str)}\n\n".encode()

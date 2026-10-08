@@ -49,4 +49,6 @@ jobs:
           docker run -d --name pme -p 7860:7860 postmortemenv:ci
           sleep 8
           curl --fail --silent http://localhost:7860/health
+          curl --fail --silent http://localhost:7860/api/copilot/status
+          curl --fail --silent http://localhost:7860/ | grep -q "<title>Hindsight</title>"
           docker stop pme

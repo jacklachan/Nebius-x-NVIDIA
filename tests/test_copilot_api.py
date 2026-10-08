@@ -174,3 +174,12 @@ def test_bundle_format_example_is_a_valid_bundle(client):
     ws = Workspace(incidents.from_bundle(example))
     assert ws.candidate_ids() == ["cfg-17"]
     assert "reserved" in ws.call("search_logs", {"service": "db", "keyword": "fatal"}).result
+
+
+def test_oversized_upload_is_refused_before_parsing(client):
+    huge = b'{"source": "bundle", "bundle": {"pad": "' + b"x" * 5_000_000 + b'"}}'
+    resp = client.post("/api/copilot/investigations", content=huge,
+                       headers={"Content-Type": "application/json"})
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["detail"]
+    assert client.get("/api/copilot/status").status_code == 200
