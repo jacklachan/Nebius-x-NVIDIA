@@ -63,7 +63,7 @@
     $("cases").innerHTML = incidents.map((inc, i) => `
       <li><article class="case-card">
         <div class="case-meta"><span>${esc(inc.difficulty)}</span><span>${esc(inc.services)} services</span>
-          <span>${inc.source === "seed" ? "generated" : "hand-written"}</span></div>
+          <span>${inc.source === "seed" ? `generated, seed ${esc(inc.seed)}` : "hand-written"}</span></div>
         <h3>${esc(inc.title)}</h3>
         <p>${esc(inc.description)}</p>
         <button type="button" data-case="${i}" ${status.ready ? "" : "disabled"}>Investigate</button>
@@ -384,7 +384,8 @@
       <p class="verdict">Root cause ${g.cause_correct ? "correct" : "wrong"}</p>
       ${g.cause_correct ? "" : `<p class="truth">Actual cause: <code>${esc(g.ground_truth_cause)}</code></p>`}
       <table>${rows}</table>
-      <p class="truth">Scored by a deterministic rubric, not by a model. The investigator never saw the answer.</p></div>`;
+      <p class="truth">Scored by a deterministic rubric, not by a model. The investigator never saw the answer.</p>
+      ${run.brief && !/^seed_/.test(run.brief.incident_id) ? '<p class="truth">This hand-written incident labels its chain in free text, so chain accuracy here understates a correct answer. Root cause is the figure to read.</p>' : ""}</div>`;
   }
 
   function onResearch({ queries, references, queries_dropped_as_private: dropped }) {

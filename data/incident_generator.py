@@ -686,7 +686,7 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
 
     return {
         "task_id": f"seed_{seed}_{difficulty}",
-        "task_name": f"Generated incident #{seed}",
+        "task_name": f"{edge} errors for {int(duration.total_seconds() // 60)} minutes",
         "task_difficulty": difficulty,
         "task_description": description,
         "max_steps": max_steps,

@@ -167,7 +167,7 @@ def _scenario_for(body: StartBody) -> tuple[dict[str, Any], str]:
             scenario.pop("relevant_fact_ids", None)
             return scenario, str(scenario.get("task_name") or scenario["task_id"])
         scenario = incidents.from_seed(body.seed, body.difficulty)
-        return scenario, f"Generated incident #{body.seed} ({body.difficulty})"
+        return scenario, scenario["task_name"]
     except incidents.IncidentError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -218,6 +218,17 @@ async def status() -> dict[str, Any]:
 @router.get("/incidents")
 async def list_incidents() -> list[dict[str, Any]]:
     items = []
+    # Generated incidents first: their telemetry is coherent and their answer
+    # is not signposted. The hand-written tasks come from the original
+    # environment and are kept for comparison.
+    for seed, difficulty in SAMPLE_SEEDS:
+        scenario = incidents.from_seed(seed, difficulty)
+        items.append({
+            "source": "seed", "seed": seed, "difficulty": difficulty,
+            "title": scenario["task_name"],
+            "description": scenario["task_description"],
+            "services": len(scenario["service_graph"]),
+        })
     for task_id in get_available_tasks():
         scenario = load_scenario(task_id)
         items.append({
@@ -226,14 +237,6 @@ async def list_incidents() -> list[dict[str, Any]]:
             "difficulty": scenario.get("task_difficulty", "?"),
             "description": scenario.get("task_description", ""),
             "services": len(scenario.get("service_graph", {})),
-        })
-    for seed, difficulty in SAMPLE_SEEDS:
-        scenario = incidents.from_seed(seed, difficulty)
-        items.append({
-            "source": "seed", "seed": seed, "difficulty": difficulty,
-            "title": f"Generated incident #{seed}",
-            "description": scenario["task_description"],
-            "services": len(scenario["service_graph"]),
         })
     return items
 
