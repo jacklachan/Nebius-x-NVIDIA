@@ -30,6 +30,41 @@ TOOLS: dict[str, dict[str, Any]] = {
     "get_infra_event": {"args": "event_id", "about": "Read an infrastructure event in full."},
 }
 
+# Names a model reaches for instead of the documented ones. Accepting them
+# costs nothing and saves a wasted turn.
+TOOL_ALIASES = {
+    "query_logs": "search_logs", "logs": "search_logs", "get_logs": "search_logs",
+    "fetch_trace": "get_trace", "trace": "get_trace",
+    "diff_commit": "get_commit", "get_commit_diff": "get_commit", "commit": "get_commit",
+    "inspect_config": "get_config", "get_config_change": "get_config", "config": "get_config",
+    "inspect_infra": "get_infra_event", "get_infra": "get_infra_event",
+    "infra_event": "get_infra_event",
+}
+_ID_ARGS = {"get_trace": "trace_id", "get_commit": "commit_hash",
+            "get_config": "config_id", "get_infra_event": "event_id"}
+_ID_ALIASES = {"id", "hash", "commit", "commit_id", "trace", "config", "event",
+               "infra_event_id", "config_change_id"}
+
+
+def normalise_call(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    tool = str(tool).strip()
+    tool = TOOL_ALIASES.get(tool, tool)
+    args = dict(args)
+    wanted = _ID_ARGS.get(tool)
+    if wanted and wanted not in args:
+        given = [k for k in args if k in _ID_ALIASES] or (list(args) if len(args) == 1 else [])
+        if given:
+            args[wanted] = args.pop(given[0])
+    if tool == "search_logs":
+        for alias in ("query", "pattern", "level", "text"):
+            if "keyword" not in args and alias in args:
+                args["keyword"] = args.pop(alias)
+        for alias in ("window", "time_range"):
+            if "time_window" not in args and alias in args:
+                args["time_window"] = args.pop(alias)
+    return tool, args
+
+
 _PLACEHOLDER_TRUTH = {"cause": "", "cause_type": "commit", "chain": []}
 
 
@@ -97,6 +132,7 @@ class Workspace:
         """Run one evidence tool. Never raises on bad input: the problem is
         returned as an ``ok=False`` evidence entry the agent can read."""
         args = {k: v for k, v in (args or {}).items() if v not in (None, "")}
+        tool, args = normalise_call(tool, args)
         key = (tool, tuple(sorted((k, str(v).lower()) for k, v in args.items())))
         if key in self._seen:
             return self._reject(tool, args, f"Already retrieved as {self._seen[key]}.")

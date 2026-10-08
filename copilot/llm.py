@@ -23,6 +23,12 @@ RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
 RETRY_DELAYS = (1.0, 3.0, 8.0)
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+_OPEN_THINK_RE = re.compile(r"<think>.*\Z", re.DOTALL)
+
+
+def strip_reasoning(text: str) -> str:
+    """Remove ``<think>`` blocks, including one cut off before it closed."""
+    return _OPEN_THINK_RE.sub("", _THINK_RE.sub("", text or "")).strip()
 
 
 class LLMError(Exception):
@@ -42,6 +48,7 @@ class ChatResult:
     output_tokens: int
     cost_usd: float
     latency_s: float
+    truncated: bool = False     # the model hit max_tokens before finishing
 
 
 @dataclass
@@ -111,7 +118,15 @@ class TokenFactoryClient:
         choices = data.get("choices") or []
         if not choices or "message" not in choices[0]:
             raise LLMError(f"Token Factory returned no choices: {json.dumps(data)[:300]}")
-        text = _THINK_RE.sub("", choices[0]["message"].get("content") or "").strip()
+        message = choices[0]["message"]
+        text = strip_reasoning(message.get("content") or "")
+        if not text:
+            # Reasoning models sometimes spend the whole reply thinking and
+            # leave the answer in the reasoning field. Better to try parsing
+            # that than to treat the turn as empty.
+            text = strip_reasoning(
+                message.get("reasoning_content") or message.get("reasoning") or "")
+        truncated = choices[0].get("finish_reason") == "length"
 
         usage = data.get("usage") or {}
         input_tokens = int(usage.get("prompt_tokens", 0))
@@ -124,6 +139,7 @@ class TokenFactoryClient:
             output_tokens=output_tokens,
             cost_usd=cost_usd(model, input_tokens, output_tokens),
             latency_s=round(latency, 3),
+            truncated=truncated,
         )
         self.meter.add(result)
         return result
@@ -175,14 +191,22 @@ def extract_json(raw: str) -> dict[str, Any]:
     Tolerates code fences, ``<think>`` blocks and prose around the object.
     Raises ``ValueError`` when there is no parseable object.
     """
-    s = _THINK_RE.sub("", raw).strip()
+    s = strip_reasoning(raw)
+    decoder = json.JSONDecoder()
     start = s.find("{")
     if start == -1:
         raise ValueError("no JSON object found")
-    try:
-        obj, _ = json.JSONDecoder().raw_decode(s[start:])
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON: {exc}") from exc
-    if not isinstance(obj, dict):
-        raise ValueError("JSON value is not an object")
-    return obj
+    error: Exception | None = None
+    # Prose before the answer may contain braces of its own; try each "{".
+    while start != -1:
+        try:
+            obj, _ = decoder.raw_decode(s[start:])
+        except json.JSONDecodeError as exc:
+            error = error or exc
+        else:
+            if isinstance(obj, dict):
+                return obj
+        start = s.find("{", start + 1)
+    if error:
+        raise ValueError(f"invalid JSON: {error}") from error
+    raise ValueError("JSON value is not an object")

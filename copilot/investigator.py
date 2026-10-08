@@ -18,6 +18,7 @@ the CLI, the benchmark and the streaming web UI.
 
 from __future__ import annotations
 
+import re
 from typing import Any, AsyncGenerator
 
 from copilot.config import ROLE_REASON, ROLE_TRIAGE
@@ -38,6 +39,16 @@ EFFECT_TAXONOMY: tuple[str, ...] = tuple(
         for step in template["chain_template"]
     })
 )
+
+_EFFECT_KEYS = {re.sub(r"[^a-z0-9]", "", label): label for label in EFFECT_TAXONOMY}
+
+
+def snap_effect(label: str) -> str:
+    """Map a label the model wrote ("Connection pool exhaustion",
+    "upstream-timeout") onto the taxonomy when it is the same words.
+    Anything else is kept as written rather than guessed at."""
+    return _EFFECT_KEYS.get(re.sub(r"[^a-z0-9]", "", label.lower()), label.strip())
+
 
 MAX_TRIAGE_STEPS = 12
 MAX_STUMBLES = 3          # unparseable replies or rejected calls in a row
@@ -186,14 +197,16 @@ class Investigator:
                 ROLE_TRIAGE,
                 [{"role": "system", "content": TRIAGE_SYSTEM},
                  {"role": "user", "content": user}],
-                max_tokens=600,
+                max_tokens=1500,
             )
             yield {"type": "usage", **self.llm.meter.snapshot()}
             try:
                 step = extract_json(reply.text)
             except ValueError as exc:
                 stumbles += 1
-                note = f"{exc}. Reply with one JSON object."
+                note = ("it was cut off before the JSON. Think less and reply with the "
+                        "JSON object only." if reply.truncated
+                        else f"{exc}. Reply with one JSON object.")
                 continue
 
             thought = str(step.get("thought", ""))[:300]
@@ -292,7 +305,7 @@ class Investigator:
             cited = hop.get("evidence") if isinstance(hop.get("evidence"), list) else []
             chain.append({
                 "service": hop["service"],
-                "effect": str(hop.get("effect", "")).strip(),
+                "effect": snap_effect(str(hop.get("effect", ""))),
                 "because": str(hop.get("because", ""))[:400],
                 "evidence": [c for c in cited if c in evidence_ids],
             })
