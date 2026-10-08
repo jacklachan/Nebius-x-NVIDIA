@@ -557,8 +557,18 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
     logs: dict[str, list[dict[str, Any]]] = {}
     noise_per_service = {"easy": 8, "medium": 12, "hard": 16}[difficulty]
 
-    def during() -> datetime:
-        return start + timedelta(seconds=rng.randint(5, int(duration.total_seconds()) - 5))
+    # Failures begin at the origin and reach each caller a little later, so
+    # the order in which services start erroring carries real information.
+    onset = {}
+    moment = start
+    for service in ([callers[0]] + callers[1:] if mode_name == "failover_bug" else affected):
+        moment += timedelta(seconds=rng.randint(4, 45))
+        onset[service] = moment
+
+    def during(service: str | None = None) -> datetime:
+        earliest = onset.get(service, start + timedelta(seconds=5))
+        room = int((end - earliest).total_seconds()) - 5
+        return earliest + timedelta(seconds=rng.randint(0, max(room, 1)))
 
     for service in services:
         entries: list[tuple[datetime, str, str, bool]] = []
@@ -574,20 +584,25 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
                 fraction = (i + 1) / (len(precursors) + 1)
                 entries.append((start - lead * (1 - fraction), level,
                                 _fill(text, rng, small=small), True))
-            for level, text in target_errors:
-                for _ in range(2):
-                    entries.append((during(), level, _fill(text, rng, small=small), True))
+            for index, (level, text) in enumerate(target_errors):
+                for repeat in range(2):
+                    # The first error lands exactly at this service's onset.
+                    when = onset[service] if (index, repeat) == (0, 0) and service in onset                         else during(service)
+                    entries.append((when, level, _fill(text, rng, small=small), True))
         if mode_name == "failover_bug" and service == callers[0]:
-            moment = start
+            # In order: connections closed, pool empty, then requests failing.
+            at = onset[service] - timedelta(seconds=rng.randint(1, 3))
             for level, text in FAILOVER_CLIENT_ERRORS:
-                # In order: connections closed, pool empty, then requests failing.
-                moment += timedelta(seconds=rng.randint(2, 25))
-                entries.append((moment, level, _fill(text, rng, target=target), True))
+                entries.append((at, level, _fill(text, rng, target=target), True))
+                at = onset[service] if at < onset[service] else at + timedelta(seconds=rng.randint(3, 30))
         if service in callers:
             dependency = affected[affected.index(service) - 1]
-            for level, text in rng.sample(DEPENDANT_ERRORS, 3):
-                entries.append((during(), level,
+            first = True
+            for level, text in rng.sample([e for e in DEPENDANT_ERRORS if e[0] == "ERROR"], 2)                     + [e for e in DEPENDANT_ERRORS if e[0] != "ERROR"]:
+                is_onset = first and not (mode_name == "failover_bug" and service == callers[0])
+                entries.append((onset[service] if is_onset else during(service), level,
                                 _fill(text, rng, dep=dependency, span_error=span_error), True))
+                first = False
 
         entries.sort(key=lambda e: e[0])
         logs[service] = [
@@ -603,7 +618,7 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
     for index in range(n_traces):
         failing = index % 2 == 0
         if failing:
-            when = during()
+            when = during(failing_path[0])
             spans = []
             for service in failing_path:
                 at_origin = service == target

@@ -143,3 +143,24 @@ def test_seeds_differ():
     a, b = generate_incident(1, "medium"), generate_incident(2, "medium")
     assert a["ground_truth"]["cause"] != b["ground_truth"]["cause"]
     assert a["service_graph"] != b["service_graph"]
+
+
+@pytest.mark.parametrize("difficulty", list(DIFFICULTY))
+def test_errors_start_at_the_origin_and_spread_outward(difficulty):
+    """First-error order across services must follow the causal chain."""
+    for seed in range(40):
+        incident = generate_incident(seed, difficulty)
+        window = incident["incident_window"]
+        first_error = {}
+        for service, entries in incident["logs"].items():
+            loud = sorted(e["timestamp"] for e in entries
+                          if e["level"] in ("ERROR", "CRITICAL")
+                          and window["start"] <= e["timestamp"] <= window["end"])
+            if loud:
+                first_error[service] = loud[0]
+        chain = list(dict.fromkeys(h["service"] for h in incident["ground_truth"]["chain"]))
+        erroring = [s for s in chain if s in first_error]
+        assert len(erroring) >= len(chain) - 1, (seed, incident["failure_mode"])
+        times = [first_error[s] for s in erroring]
+        assert times == sorted(times), (seed, incident["failure_mode"], erroring, times)
+        assert set(first_error) <= set(chain)
