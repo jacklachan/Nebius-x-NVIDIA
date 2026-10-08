@@ -4,7 +4,7 @@ scripted model so no network or API key is needed."""
 import asyncio
 import json
 
-from copilot.config import ROLE_REASON, ROLE_TRIAGE
+from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLE_WRITER
 from copilot.investigator import EFFECT_TAXONOMY, Investigator
 from copilot.llm import ChatResult, LLMError, UsageMeter
 from copilot.workspace import Workspace
@@ -15,8 +15,8 @@ class ScriptedModel:
     """Replays canned replies per role and records what it was asked."""
 
     def __init__(self, triage=(), reason=(), fail_with=None):
-        self.replies = {ROLE_TRIAGE: list(triage), ROLE_REASON: list(reason)}
-        self.prompts = {ROLE_TRIAGE: [], ROLE_REASON: []}
+        self.replies = {ROLE_TRIAGE: list(triage), ROLE_REASON: list(reason), ROLE_WRITER: []}
+        self.prompts = {ROLE_TRIAGE: [], ROLE_REASON: [], ROLE_WRITER: []}
         self.meter = UsageMeter()
         self.fail_with = fail_with
 
@@ -82,7 +82,7 @@ def test_correct_investigation_is_graded_as_correct():
 
     events = _run(investigator)
 
-    assert [e["phase"] for e in _of(events, "phase")] == ["triage", "diagnosis"]
+    assert [e["phase"] for e in _of(events, "phase")] == ["triage", "diagnosis", "report"]
     assert _of(events, "evidence")[0]["id"] == "E1"
     grade = _of(events, "grade")[0]
     assert grade["cause_correct"]

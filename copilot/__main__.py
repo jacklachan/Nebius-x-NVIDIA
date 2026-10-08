@@ -1,6 +1,6 @@
 """Command line for the copilot.
 
-    python -m copilot investigate --seed 42 --difficulty medium
+    python -m copilot investigate --seed 42 --difficulty medium --out postmortem.md
     python -m copilot investigate --task task2_cascade_chain
     python -m copilot investigate --file my_incident.json
     python -m copilot models
@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 from copilot import incidents
 from copilot.config import ROLES, load_dotenv, load_settings
@@ -50,6 +51,8 @@ def _print_event(event: dict) -> None:
             print(f"  {role:<7} {row['model']}  {row['calls']} calls, "
                   f"{row['input_tokens']}+{row['output_tokens']} tokens, ${row['cost_usd']:.4f}")
         print(f"  total   ${usage['total_cost_usd']:.4f}")
+    elif kind == "warning":
+        print(f"  warning: {event['message']}", file=sys.stderr)
     elif kind == "error":
         print(f"\nERROR  {event['message']}", file=sys.stderr)
 
@@ -70,6 +73,9 @@ async def _investigate(args: argparse.Namespace) -> int:
         else:
             _print_event(event)
         failed = failed or event["type"] == "error"
+        if event["type"] == "report" and args.out:
+            Path(args.out).write_text(event["markdown"], encoding="utf-8")
+            print(f"\nPostmortem written to {args.out}")
     return 1 if failed else 0
 
 
@@ -98,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("--difficulty", default="easy", choices=incidents.DIFFICULTIES)
     inv.add_argument("--task", help="a hand-written benchmark task ID")
     inv.add_argument("--file", help="path to an incident bundle (JSON)")
+    inv.add_argument("--out", help="write the postmortem (Markdown) to this path")
     inv.add_argument("--json", action="store_true", help="print raw events, one per line")
 
     sub.add_parser("models", help="check the configured models exist on Token Factory")

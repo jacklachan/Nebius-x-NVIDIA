@@ -1,12 +1,14 @@
 """The investigation loop.
 
-Two stages, two models:
+Three stages, three models:
 
   triage     Many short calls on the small Nemotron model. Each one picks the
              next piece of evidence to pull. Cheap, fast, latency-sensitive.
   diagnosis  One or two calls on the large Nemotron model. Reads the whole
              evidence ledger and commits to a root cause and causal chain,
              citing evidence IDs. It may ask for a few more lookups once.
+  report     One call on the mid-size model for the prose of the postmortem;
+             the factual sections are assembled in code (see report.py).
 
 The investigator is an async generator of event dicts so the same code drives
 the CLI, the benchmark and the streaming web UI.
@@ -14,13 +16,13 @@ the CLI, the benchmark and the streaming web UI.
 
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, dataclass, field
-from typing import Any, AsyncGenerator, Protocol
+from typing import Any, AsyncGenerator
 
 from copilot.config import ROLE_REASON, ROLE_TRIAGE
-from copilot.llm import ChatResult, LLMError, UsageMeter, extract_json
-from copilot.workspace import TOOLS, Evidence, Workspace
+from copilot.core import ChatModel, Diagnosis, brief_text, ledger_text
+from copilot.llm import LLMError, extract_json
+from copilot.report import fallback_narrative, render_postmortem, write_narrative
+from copilot.workspace import TOOLS, Workspace
 from data.seed_generator import FAILURE_TEMPLATES
 
 # Closed vocabulary for labelling each hop of a causal chain. Using a fixed
@@ -37,44 +39,6 @@ EFFECT_TAXONOMY: tuple[str, ...] = tuple(
 MAX_TRIAGE_STEPS = 12
 MAX_STUMBLES = 3          # unparseable replies or rejected calls in a row
 MAX_FOLLOW_UPS = 3        # extra lookups the diagnosis stage may request
-RESULT_CHARS = 1800       # per-evidence text shown to the models
-
-_CAUSE_ORDER = {"commit": 0, "infra": 1, "cfg": 2}
-
-
-class ChatModel(Protocol):
-    meter: UsageMeter
-
-    async def chat(
-        self, role: str, messages: list[dict[str, str]],
-        max_tokens: int = ..., temperature: float = ...,
-    ) -> ChatResult: ...
-
-
-@dataclass
-class Diagnosis:
-    root_cause_ids: list[str] = field(default_factory=list)
-    summary: str = ""
-    confidence: float = 0.0
-    chain: list[dict[str, Any]] = field(default_factory=list)
-    ruled_out: list[dict[str, str]] = field(default_factory=list)
-    open_questions: list[str] = field(default_factory=list)
-
-    @property
-    def cause(self) -> str:
-        """Root cause in the grader's format: IDs joined by '+', commits first."""
-        ordered = sorted(
-            self.root_cause_ids,
-            key=lambda i: (_CAUSE_ORDER.get(i.split("-")[0], 9), i),
-        )
-        return "+".join(ordered)
-
-    def graded_chain(self) -> list[dict[str, str]]:
-        return [{"service": s["service"], "effect": s["effect"]} for s in self.chain]
-
-    def as_dict(self) -> dict[str, Any]:
-        return {**asdict(self), "cause": self.cause}
-
 
 TRIAGE_SYSTEM = f"""You are the triage stage of a production incident investigation. The outage already happened; you are reading frozen telemetry to find what started it.
 
@@ -115,24 +79,6 @@ Rules:
 - more_evidence: at most three lookups that would materially change your answer. Leave it empty when you are confident or when told no further lookups are possible."""
 
 
-def _clip(text: str, limit: int = RESULT_CHARS) -> str:
-    return text if len(text) <= limit else text[:limit] + "\n...[truncated]"
-
-
-def _ledger(evidence: list[Evidence]) -> str:
-    kept = [e for e in evidence if e.ok]
-    if not kept:
-        return "(no evidence gathered yet)"
-    return "\n\n".join(
-        f"[{e.id}] {e.tool}({json.dumps(e.args, separators=(',', ':'))})\n{_clip(e.result)}"
-        for e in kept
-    )
-
-
-def _brief_text(brief: dict[str, Any]) -> str:
-    return json.dumps(brief, separators=(",", ":"))
-
-
 class Investigator:
     def __init__(
         self,
@@ -145,6 +91,8 @@ class Investigator:
         self.max_triage_steps = max_triage_steps
         self.diagnosis: Diagnosis | None = None
         self.grade: dict[str, Any] | None = None
+        self.narrative: dict[str, Any] | None = None
+        self.report: str = ""
 
     async def run(self) -> AsyncGenerator[dict[str, Any], None]:
         yield {"type": "brief", "brief": self.ws.brief(),
@@ -165,18 +113,33 @@ class Investigator:
         self.grade = self.ws.grade(self.diagnosis.cause, self.diagnosis.graded_chain())
         if self.grade is not None:
             yield {"type": "grade", **self.grade}
+
+        yield {"type": "phase", "phase": "report"}
+        brief = self.ws.brief()
+        try:
+            self.narrative = await write_narrative(
+                self.llm, brief, self.diagnosis, self.ws.evidence)
+        except LLMError as exc:
+            # The diagnosis is the valuable part; never lose it to a failed
+            # prose call. Fall back to a document built from the facts alone.
+            yield {"type": "warning", "message": f"Writer model unavailable: {exc}"}
+            self.narrative = fallback_narrative(brief, self.diagnosis)
+        usage = self.llm.meter.snapshot()
+        self.report = render_postmortem(
+            brief, self.diagnosis, self.ws.evidence, self.narrative, usage)
+        yield {"type": "report", "narrative": self.narrative, "markdown": self.report}
         yield {
             "type": "done",
             "diagnosis": self.diagnosis.as_dict(),
             "grade": self.grade,
             "evidence": [e.as_dict() for e in self.ws.evidence if e.ok],
-            "usage": self.llm.meter.snapshot(),
+            "usage": usage,
         }
 
     # --- stage 1: triage ---
 
     async def _triage(self) -> AsyncGenerator[dict[str, Any], None]:
-        brief = _brief_text(self.ws.brief())
+        brief = brief_text(self.ws.brief())
         stumbles = 0
         note = ""
         for _ in range(self.max_triage_steps):
@@ -184,7 +147,7 @@ class Investigator:
                 break
             user = (
                 f"INCIDENT BRIEF\n{brief}\n\n"
-                f"EVIDENCE SO FAR\n{_ledger(self.ws.evidence)}\n\n"
+                f"EVIDENCE SO FAR\n{ledger_text(self.ws.evidence)}\n\n"
                 f"Lookups left: {self.ws.calls_left}."
                 + (f"\nYour last reply was not usable: {note}" if note else "")
                 + "\nWhat is the next lookup?"
@@ -248,10 +211,10 @@ class Investigator:
     async def _ask_diagnosis(self, allow_follow_ups: bool) -> dict[str, Any]:
         brief = self.ws.brief()
         user = (
-            f"INCIDENT BRIEF\n{_brief_text(brief)}\n\n"
+            f"INCIDENT BRIEF\n{brief_text(brief)}\n\n"
             f"CANDIDATE ROOT CAUSE IDS\n{', '.join(self.ws.candidate_ids())}\n\n"
             f"EFFECT TAXONOMY\n{', '.join(EFFECT_TAXONOMY)}\n\n"
-            f"EVIDENCE LEDGER\n{_ledger(self.ws.evidence)}\n\n"
+            f"EVIDENCE LEDGER\n{ledger_text(self.ws.evidence)}\n\n"
             + ("You may request more evidence once."
                if allow_follow_ups and self.ws.calls_left > 0
                else "No further lookups are possible. Give your final diagnosis.")
