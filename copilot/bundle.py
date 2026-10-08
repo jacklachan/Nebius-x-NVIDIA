@@ -62,7 +62,7 @@ def _iso(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _named(pairs: list[str], what: str) -> dict[str, Path]:
+def named_paths(pairs: list[str], what: str) -> dict[str, Path]:
     """Turn ['api=../api', ...] into {'api': Path('../api')}."""
     out: dict[str, Path] = {}
     for pair in pairs:

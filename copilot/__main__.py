@@ -21,7 +21,7 @@ from pathlib import Path
 from dataclasses import replace
 
 from copilot import incidents
-from copilot.bundle import BundleError, _named, build_bundle, describe
+from copilot.bundle import BundleError, build_bundle, describe, named_paths
 from copilot.bench import BASELINES, parse_seeds, run_baseline, run_benchmark
 from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
@@ -170,7 +170,7 @@ async def _bench(args: argparse.Namespace) -> int:
 def _bundle(args: argparse.Namespace) -> int:
     bundle = build_bundle(
         args.start, args.end,
-        repos=_named(args.repo, "repo"), logs=_named(args.logs, "logs"),
+        repos=named_paths(args.repo, "repo"), logs=named_paths(args.logs, "logs"),
         services_file=args.services, extra_file=args.extra,
         description=args.description, lookback_hours=args.lookback_hours)
     incidents.from_bundle(bundle)  # fail here rather than at investigation time

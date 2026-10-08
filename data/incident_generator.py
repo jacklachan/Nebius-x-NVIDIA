@@ -431,7 +431,7 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
 
     # Topology: redraw until some service has enough callers above it to carry
     # the whole chain, so every hop lands on a different, real service.
-    for attempt in range(50):
+    for _ in range(50):
         services, graph = _build_graph(rng, rng.randint(max(n_low, hops_needed + 1), n_high))
         eligible = [s for s in services if len(_caller_chains(graph, s)) >= hops_needed]
         if eligible:

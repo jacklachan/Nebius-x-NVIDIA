@@ -1,6 +1,5 @@
 """A run saved by the CLI must replay through the web API."""
 
-import asyncio
 import json
 
 from fastapi.testclient import TestClient
