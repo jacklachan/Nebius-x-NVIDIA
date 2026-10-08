@@ -48,7 +48,7 @@ Notes:
 
 - `--auth token` is left out on purpose. Judges must be able to open the demo
   URL in a browser, and a browser cannot send a bearer token. The app limits
-  what an anonymous visitor can spend (see section 4).
+  what an anonymous visitor can spend (see section 5).
 - Prefer `--env-secret NEBIUS_API_KEY=<secret_selector>` over `--env` once the
   keys are stored in SecretStash, so they do not sit in shell history.
 - `cpu-d3` / `4vcpu-16gb` is the CPU shape used in the Nebius quickstart. A
