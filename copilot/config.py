@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
 
@@ -49,6 +50,23 @@ class Settings:
 
     def model_for(self, role: str) -> str:
         return self.models[role]
+
+
+def load_dotenv(path: str | Path = ".env") -> None:
+    """Load KEY=VALUE lines from a local .env file. Real environment
+    variables win, so a deployment's secrets are never overridden."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip("'\"")
+        if value:
+            os.environ.setdefault(key.strip(), value)
 
 
 def load_settings() -> Settings:
