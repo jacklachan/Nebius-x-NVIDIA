@@ -18,7 +18,7 @@ from pathlib import Path
 from dataclasses import replace
 
 from copilot import incidents
-from copilot.bench import parse_seeds, run_benchmark
+from copilot.bench import BASELINES, parse_seeds, run_baseline, run_benchmark
 from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
 from copilot.llm import LLMError, TokenFactoryClient
@@ -107,7 +107,21 @@ async def _models() -> int:
     return 0
 
 
+def _save_bench(result: dict, args: argparse.Namespace) -> None:
+    print(json.dumps(result["summary"], indent=2))
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
+        print(f"Results written to {args.out}")
+
+
 async def _bench(args: argparse.Namespace) -> int:
+    if args.baseline:
+        result = run_baseline(parse_seeds(args.seeds), args.difficulty, args.baseline)
+        result.update(label=args.baseline, kind="baseline", models={},
+                      about=BASELINES[args.baseline])
+        _save_bench(result, args)
+        return 0
     settings = load_settings()
     models = dict(settings.models)
     if args.triage:
@@ -127,13 +141,9 @@ async def _bench(args: argparse.Namespace) -> int:
     result = await run_benchmark(
         parse_seeds(args.seeds), args.difficulty,
         lambda: TokenFactoryClient(settings), args.concurrency, show)
-    result.update(label=args.label, models={
+    result.update(label=args.label, kind="model", models={
         ROLE_TRIAGE: models[ROLE_TRIAGE], ROLE_REASON: models[ROLE_REASON]})
-    print(json.dumps(result["summary"], indent=2))
-    if args.out:
-        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
-        print(f"Results written to {args.out}")
+    _save_bench(result, args)
     return 1 if result["summary"]["errors"] == result["summary"]["incidents"] else 0
 
 
@@ -156,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("--seeds", default="0-9", help="for example 0-19 or 3,7,42")
     bench.add_argument("--difficulty", default="medium", choices=incidents.DIFFICULTIES)
     bench.add_argument("--label", default="routed", help="name for this configuration")
+    bench.add_argument("--baseline", choices=sorted(BASELINES),
+                       help="score a no-model heuristic instead of the investigator")
     bench.add_argument("--triage", help="override the triage model ID")
     bench.add_argument("--reason", help="override the diagnosis model ID")
     bench.add_argument("--concurrency", type=int, default=2)

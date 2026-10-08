@@ -492,13 +492,18 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
         count = 1 if difficulty == "medium" else 3
         for message, diff in rng.sample(ALARMING_DECOYS, count):
             decoys.append((message, diff, rng.choice(bystanders)))
+    # Timing must not give the answer away, and must not be a reliable tell in
+    # the other direction either. Usually a harmless change lands minutes
+    # before the outage: often on the failing service, sometimes elsewhere,
+    # and sometimes there is none.
+    roll = rng.random()
     for index, (message, diff, forced_service) in enumerate(decoys):
         service = forced_service or rng.choice(services)
         minutes_before = rng.randint(45, 24 * 60)
-        if index == 0:
-            # A harmless change on the failing service, closer to the incident
-            # than most culprits: timing alone must not give the answer away.
+        if index == 0 and roll < 0.55:
             service, minutes_before = culprit_service, rng.randint(3, 20)
+        elif index == 0 and roll < 0.80:
+            minutes_before = rng.randint(2, 15)
         add_commit(service, start - timedelta(minutes=minutes_before),
                    message, _fill(diff, rng, svc=service), relevant=False)
     commits.sort(key=lambda c: c["timestamp"])

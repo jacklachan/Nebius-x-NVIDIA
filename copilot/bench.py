@@ -8,6 +8,7 @@ the models and prompts, not a judge model's opinion.
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from statistics import mean
 from typing import Any, Callable
@@ -40,6 +41,49 @@ async def run_one(seed: int, difficulty: str, llm: ChatModel) -> dict[str, Any]:
             )
     row["seconds"] = round(time.monotonic() - started, 2)
     return row
+
+
+BASELINES = {
+    "random": "Pick any change at random",
+    "nearest": "Blame the most recent change before the incident",
+    "reddest": "Blame the most recent change on the service with the highest error rate",
+}
+
+
+def baseline_row(seed: int, difficulty: str, kind: str) -> dict[str, Any]:
+    """Score a no-model heuristic on one incident. These are the shortcuts a
+    hurried human reaches for; the investigator has to beat them to matter."""
+    workspace = Workspace(incidents.from_seed(seed, difficulty))
+    brief = workspace.brief()
+    start = brief["incident_window"]["start"]
+    changes = [(c["timestamp"], c["hash"], c["service"]) for c in brief["commits"]]
+    changes += [(c["timestamp"], c["config_id"], c["service"]) for c in brief["config_changes"]]
+    before = sorted(c for c in changes if c[0] < start) or sorted(changes)
+
+    if kind == "random":
+        cause = random.Random(f"baseline:{seed}:{difficulty}").choice(workspace.candidate_ids())
+    elif kind == "nearest":
+        cause = before[-1][1]
+    elif kind == "reddest":
+        reddest = max(brief["services"],
+                      key=lambda s: s.get("error_rate_during_incident") or 0)["name"]
+        on_service = [c for c in before if c[2] == reddest]
+        cause = (on_service or before)[-1][1]
+    else:
+        raise ValueError(f"Unknown baseline {kind!r}. Choose from {', '.join(BASELINES)}.")
+
+    grade = workspace.grade(cause, []) or {}
+    return {
+        "seed": seed, "difficulty": difficulty, "error": None, "cause": cause,
+        "truth": grade.get("ground_truth_cause"),
+        "cause_correct": bool(grade.get("cause_correct")), "score": grade.get("score"),
+        "confidence": None, "lookups": 0, "cost_usd": 0.0, "seconds": 0.0,
+    }
+
+
+def run_baseline(seeds: list[int], difficulty: str, kind: str) -> dict[str, Any]:
+    rows = [baseline_row(seed, difficulty, kind) for seed in seeds]
+    return {"difficulty": difficulty, "summary": summarize(rows), "rows": rows}
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
