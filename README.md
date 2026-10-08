@@ -38,6 +38,7 @@ Web research uses the **Tavily** API ([copilot/research.py](copilot/research.py)
 - **The model cannot put facts in the document.** Root cause, chain, timeline and citations are assembled in code from a validated diagnosis. IDs, services and citations the model invents are dropped. The writer model contributes prose only ([copilot/report.py](copilot/report.py)).
 - **Nothing internal reaches web search.** Search queries are written to be generic, and any query containing a service name, change ID, trace ID or email address from the incident is dropped before it is sent.
 - **Graded by rubric, not by a model.** Cause correctness, chain accuracy, efficiency, investigation quality and anti-gaming, scored deterministically ([engine/grader.py](engine/grader.py)).
+- **The test incidents do not give the answer away.** Generated incidents ([data/incident_generator.py](data/incident_generator.py)) have a symptom-only brief, a realistic diff on every commit, harmless changes that land closer to the outage than the culprit, and alarming-sounding changes that are innocent. In most of them the most recent change is not the cause.
 - **It says when it does not know.** An investigation that cannot name a cause produces a document that says so and lists the open questions.
 
 ## Run it
@@ -90,7 +91,8 @@ copilot/            the product
   bench.py          benchmark runner
 web/copilot_api.py  HTTP API and live event stream
 static/copilot/     the UI
-engine/, data/      PostmortemEnv: scenarios, generator, deterministic grader
+data/incident_generator.py   incidents with coherent telemetry and decoys
+engine/, data/      PostmortemEnv: scenarios, original generator, deterministic grader
 ```
 
 ## What existed before this hackathon
@@ -99,11 +101,11 @@ Hindsight is built on **PostmortemEnv**, a reinforcement-learning environment ou
 
 Carried over: the incident scenarios and procedural generator, the environment, the deterministic grader, and the original console (now at `/lab`).
 
-Built during the Nebius x NVIDIA submission period: everything in `copilot/`, `web/copilot_api.py` and `static/copilot/`. That is the blind investigator, Nemotron model routing on Token Factory, the Tavily research step, the postmortem writer, support for uploaded incidents, the benchmark runner and the product UI.
+Built during the Nebius x NVIDIA submission period: everything in `copilot/`, `web/copilot_api.py` and `static/copilot/`. That is the blind investigator, Nemotron model routing on Token Factory, the Tavily research step, the postmortem writer, support for uploaded incidents, the benchmark runner, a new incident generator and the product UI.
 
 ## Known limits
 
-- Generated incidents come from five failure templates. They are useful for measuring the agent and are simpler than real outages.
+- Generated incidents cover five failure modes (connection pool exhaustion, memory leak, out-of-memory crash loop, config change, failover bug triggered by a network event). They are useful for measuring the agent and are simpler than real outages.
 - Causal-chain scoring needs exact labels, so the agent labels each hop from a fixed taxonomy of failure modes. The five hand-written tasks use free-text labels, so chain scores on those understate the agent; root-cause accuracy is the number to trust there.
 - The agent can only name a cause that is present in the bundle. If the change that broke production was never exported, it will not be found.
 

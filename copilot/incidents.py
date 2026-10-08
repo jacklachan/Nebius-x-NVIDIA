@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from data.generator import get_available_tasks, load_scenario
-from data.seed_generator import generate_scenario
+from data.incident_generator import generate_incident
 
 DIFFICULTIES = ("easy", "medium", "hard")
 REQUIRED_KEYS = ("service_graph", "services", "incident_window", "logs")
@@ -33,7 +33,7 @@ def from_task(task_id: str) -> dict[str, Any]:
 def from_seed(seed: int, difficulty: str = "easy") -> dict[str, Any]:
     if difficulty not in DIFFICULTIES:
         raise IncidentError(f"Difficulty must be one of {', '.join(DIFFICULTIES)}.")
-    return generate_scenario(int(seed), difficulty)
+    return generate_incident(int(seed), difficulty)
 
 
 def from_bundle(bundle: dict[str, Any]) -> dict[str, Any]:

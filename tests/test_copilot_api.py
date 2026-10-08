@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import web.copilot_api as api
 from app import app
 from copilot.llm import ChatResult, UsageMeter
-from data.seed_generator import generate_scenario
+from data.incident_generator import generate_incident as generate_scenario
 
 
 class Model:

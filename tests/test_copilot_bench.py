@@ -8,7 +8,7 @@ import pytest
 from copilot.bench import parse_seeds, run_benchmark, summarize
 from copilot.config import ROLE_WRITER
 from copilot.llm import ChatResult, LLMError, UsageMeter
-from data.seed_generator import generate_scenario
+from data.incident_generator import generate_incident as generate_scenario
 
 
 class AnswerKey:
