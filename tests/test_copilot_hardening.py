@@ -138,5 +138,6 @@ def test_sloppy_but_right_investigation_scores_as_right():
     assert "cut off" in model.prompts[1]
     grade = next(e for e in events if e["type"] == "grade")
     assert grade["cause_correct"]
-    chain = next(r for r in grade["rubrics"] if r["rubric"] == "chain_accuracy")
-    assert chain["raw_score"] == pytest.approx(1.0)
+    scores = {r["rubric"]: r["raw_score"] for r in grade["rubrics"]}
+    assert scores["failure_path"] == scores["failure_modes"] == 1.0
+    assert scores["grounding"] == 1.0  # it read the change it blamed and cited it

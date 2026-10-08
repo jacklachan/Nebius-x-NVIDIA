@@ -26,19 +26,8 @@ from copilot.core import ChatModel, Diagnosis, brief_text, ledger_text
 from copilot.llm import LLMError, extract_json
 from copilot.report import fallback_narrative, render_postmortem, write_narrative
 from copilot.research import Reference, Researcher, ResearchError
+from copilot.taxonomy import EFFECT_TAXONOMY, taxonomy_text
 from copilot.workspace import TOOLS, Workspace
-from data.seed_generator import FAILURE_TEMPLATES
-
-# Closed vocabulary for labelling each hop of a causal chain. Using a fixed
-# failure-mode taxonomy keeps chains comparable across incidents and is what
-# lets the grader score them exactly.
-EFFECT_TAXONOMY: tuple[str, ...] = tuple(
-    sorted({
-        step["effect"]
-        for template in FAILURE_TEMPLATES.values()
-        for step in template["chain_template"]
-    })
-)
 
 _EFFECT_KEYS = {re.sub(r"[^a-z0-9]", "", label): label for label in EFFECT_TAXONOMY}
 
@@ -69,6 +58,7 @@ How to investigate:
 - Outages usually follow a change. Read the diff or value of every commit and config change that landed on a suspect service shortly before the incident began. A commit message alone proves nothing.
 - Follow the dependency graph: a failing service is often a victim of something it depends on.
 - Check infrastructure events close to the incident start.
+- Logs are returned 30 lines at a time, oldest first. Use level and time_window to get to the lines that matter, and before_incident to look for early warning signs.
 - Never repeat a lookup. Only use IDs that appear in the brief.
 - Every lookup costs time and money. Stop as soon as you can name the change that started the outage and how it spread."""
 
@@ -88,7 +78,7 @@ Reply with ONE JSON object and nothing else:
 Rules:
 - root_cause_ids must come from the candidate list. Name one ID. Name two only when two independent changes were both necessary (for example a code bug that needed an infrastructure event to trigger it).
 - chain is ordered from the origin to the user-visible symptom, one entry per failure hop. A service may appear more than once.
-- effect must be one of the taxonomy labels.
+- effect must be one of the taxonomy labels, chosen by meaning. Use the label only, not its description.
 - Cite evidence IDs for every hop. Do not cite IDs that are not in the ledger.
 - more_evidence: at most three lookups that would materially change your answer. Leave it empty when you are confident or when told no further lookups are possible."""
 
@@ -129,7 +119,7 @@ class Investigator:
             return
 
         assert self.diagnosis is not None
-        self.grade = self.ws.grade(self.diagnosis.cause, self.diagnosis.graded_chain())
+        self.grade = self.ws.grade(self.diagnosis.cause, self.diagnosis.chain)
         if self.grade is not None:
             yield {"type": "grade", **self.grade}
 
@@ -256,7 +246,7 @@ class Investigator:
         user = (
             f"INCIDENT BRIEF\n{brief_text(brief)}\n\n"
             f"CANDIDATE ROOT CAUSE IDS\n{', '.join(self.ws.candidate_ids())}\n\n"
-            f"EFFECT TAXONOMY\n{', '.join(EFFECT_TAXONOMY)}\n\n"
+            f"EFFECT TAXONOMY (label: meaning)\n{taxonomy_text()}\n\n"
             f"EVIDENCE LEDGER\n{ledger_text(self.ws.evidence)}\n\n"
             + ("You may request more evidence once."
                if allow_follow_ups and self.ws.calls_left > 0

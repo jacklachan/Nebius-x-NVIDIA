@@ -7,7 +7,7 @@ import pytest
 
 from copilot.workspace import Workspace
 from data.incident_generator import DIFFICULTY, MODES, generate_incident
-from data.seed_generator import FAILURE_TEMPLATES
+from copilot.taxonomy import FAILURE_MODES
 
 CASES = [(seed, difficulty) for difficulty in DIFFICULTY for seed in range(40)]
 GIVEAWAYS = re.compile(
@@ -38,13 +38,13 @@ def test_incident_is_coherent(seed, difficulty):
     assert [entities[c]["relevant"] for c in causes] == [True] * len(causes)
 
     # The chain uses the shared vocabulary and climbs real dependency edges.
-    template = FAILURE_TEMPLATES[incident["failure_mode"]]["chain_template"]
-    assert [hop["effect"] for hop in truth["chain"]] == [s["effect"] for s in template]
+    template = FAILURE_MODES[incident["failure_mode"]]["chain"]
+    assert [hop["effect"] for hop in truth["chain"]] == [effect for _, effect in template]
     hops = [hop["service"] for hop in truth["chain"]]
     for earlier, later in zip(hops, hops[1:]):
         assert earlier == later or earlier in graph[later], (earlier, later)
     distinct = list(dict.fromkeys(hops))
-    wanted = len({s["service"] for s in template})
+    wanted = len({role for role, _ in template})
     assert len(distinct) == wanted
 
     # Services off the failure path are healthy; the ones on it are not.

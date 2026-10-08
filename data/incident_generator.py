@@ -17,8 +17,8 @@ answer has to be worked out:
   off the failure path stay healthy.
 * The incident brief reports symptoms only. It never hints at the cause.
 
-Same output shape as the first generator, same causal-chain vocabulary, and
-fully determined by ``(seed, difficulty)``.
+Chains are labelled from the vocabulary in ``copilot/taxonomy.py``. Output
+is fully determined by ``(seed, difficulty)``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from data.seed_generator import FAILURE_TEMPLATES
+from copilot.taxonomy import FAILURE_MODES, callers_needed
 
 DIFFICULTY = {
     #          services  modes                                             decoy commits  max_steps
@@ -422,12 +422,8 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
 
     mode_name = rng.choice(modes)
     mode = MODES[mode_name]
-    chain_template = FAILURE_TEMPLATES[mode_name]["chain_template"]
-    hops_needed = max(
-        (int(step["service"][len("{upstream_"):-1])
-         for step in chain_template if step["service"].startswith("{upstream_")),
-        default=0,
-    )
+    chain_template = FAILURE_MODES[mode_name]["chain"]
+    hops_needed = callers_needed(mode_name)
 
     # Topology: redraw until some service has enough callers above it to carry
     # the whole chain, so every hop lands on a different, real service.
@@ -454,13 +450,10 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
     span_error = _fill(variant.get("span_error") or mode["span_error"], rng)
     target_errors = variant.get("errors") or mode["errors"]
 
-    def service_for(placeholder: str) -> str:
-        if placeholder == "{target_service}":
-            return target
-        return callers[int(placeholder[len("{upstream_"):-1]) - 1]
+    def service_for(role: str) -> str:
+        return target if role == "origin" else callers[int(role.split("_")[1]) - 1]
 
-    chain = [{"service": service_for(step["service"]), "effect": step["effect"]}
-             for step in chain_template]
+    chain = [{"service": service_for(role), "effect": effect} for role, effect in chain_template]
     affected = [target] + callers
     # The failover bug lives in the service that calls the target.
     culprit_service = callers[0] if mode_name == "failover_bug" else target
@@ -661,7 +654,7 @@ def generate_incident(seed: int, difficulty: str = "easy") -> dict[str, Any]:
         })
 
     # ---- ground truth ----
-    cause_type = FAILURE_TEMPLATES[mode_name]["root_cause_type"]
+    cause_type = FAILURE_MODES[mode_name]["cause_type"]
     ground_truth: dict[str, Any] = {"cause_type": cause_type, "chain": chain}
     if cause_type == "config":
         ground_truth["cause"] = culprit_config

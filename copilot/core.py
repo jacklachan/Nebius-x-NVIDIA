@@ -42,9 +42,6 @@ class Diagnosis:
         )
         return "+".join(ordered)
 
-    def graded_chain(self) -> list[dict[str, str]]:
-        return [{"service": s["service"], "effect": s["effect"]} for s in self.chain]
-
     def as_dict(self) -> dict[str, Any]:
         return {**asdict(self), "cause": self.cause}
 
