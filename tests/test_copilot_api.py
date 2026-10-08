@@ -153,3 +153,24 @@ def test_recordings_load_from_disk_and_are_marked(tmp_path, monkeypatch):
     assert list(fresh.items) == ["rec1"]
     assert fresh.items["rec1"].summary()["recorded"] is True
     assert fresh.items["rec1"].summary()["cause"] == "commit-x"
+
+
+def test_product_ui_is_served_at_root_and_lab_keeps_the_old_console(client):
+    home = client.get("/")
+    assert home.status_code == 200 and "<title>Hindsight</title>" in home.text
+    for asset in ("copilot.css", "copilot.js", "bundle-format.html"):
+        assert client.get(f"/static/copilot/{asset}").status_code == 200
+    lab = client.get("/lab")
+    assert lab.status_code == 200 and "Hindsight" not in lab.text
+
+
+def test_bundle_format_example_is_a_valid_bundle(client):
+    import re
+    from copilot import incidents
+    from copilot.workspace import Workspace
+
+    page = client.get("/static/copilot/bundle-format.html").text
+    example = json.loads(re.search(r"<pre><code>(\{.*?\})</code></pre>", page, re.S).group(1))
+    ws = Workspace(incidents.from_bundle(example))
+    assert ws.candidate_ids() == ["cfg-17"]
+    assert "reserved" in ws.call("search_logs", {"service": "db", "keyword": "fatal"}).result

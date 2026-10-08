@@ -12,7 +12,9 @@ repo's smoke tests and inference script:
   * GET  /schema
   * GET  /metadata
 
-The live console remains at ``/`` with streaming agent routes under ``/api``.
+The product UI (the incident copilot) is served at ``/`` and talks to
+``/api/copilot``. The original environment console is at ``/lab`` with its
+streaming agent routes under ``/api``.
 """
 
 from pathlib import Path
@@ -117,6 +119,12 @@ app.include_router(copilot_router)
 
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "copilot" / "index.html")
+
+
+@app.get("/lab", include_in_schema=False)
+async def lab() -> FileResponse:
+    """The original PostmortemEnv console: baselines, curriculum, live training."""
     return FileResponse(STATIC_DIR / "index.html")
 
 

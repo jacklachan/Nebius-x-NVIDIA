@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident bundle format · Hindsight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/copilot/copilot.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/" aria-label="Hindsight home">
+    <span class="brand-mark" aria-hidden="true">E</span>
+    <span class="brand-name">Hindsight</span>
+  </a>
+  <p class="bar-note"></p>
+  <nav class="bar-nav"><a href="/">Incidents</a></nav>
+</header>
+<main class="home">
+  <article class="doc">
+    <h1>Incident bundle format</h1>
+    <p>A bundle is one JSON file holding the telemetry around an incident. Export it from your own systems, upload it on the home page, and Hindsight investigates it the same way it investigates the samples. Uploaded bundles are never graded, and nothing in them is sent to web search.</p>
+
+    <h2>Required</h2>
+    <table>
+      <thead><tr><th>Key</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>service_graph</code></td><td>Each service mapped to the services it depends on.</td></tr>
+        <tr><td><code>services</code></td><td>One entry per service: <code>name</code>, and optionally <code>status</code> and <code>error_rate_during_incident</code>.</td></tr>
+        <tr><td><code>incident_window</code></td><td><code>start</code> and <code>end</code> as ISO 8601 timestamps.</td></tr>
+        <tr><td><code>logs</code></td><td>Each service mapped to a list of log lines: <code>id</code>, <code>timestamp</code>, <code>level</code>, <code>message</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Optional, and worth including</h2>
+    <table>
+      <thead><tr><th>Key</th><th>Fields per entry</th></tr></thead>
+      <tbody>
+        <tr><td><code>commits</code></td><td><code>hash</code>, <code>service</code>, <code>timestamp</code>, <code>author</code>, <code>message</code>, <code>diff</code></td></tr>
+        <tr><td><code>config_changes</code></td><td><code>config_id</code>, <code>service</code>, <code>timestamp</code>, <code>key</code>, <code>old_value</code>, <code>new_value</code>, <code>description</code></td></tr>
+        <tr><td><code>infra_events</code></td><td><code>event_id</code>, <code>timestamp</code>, <code>type</code>, <code>description</code></td></tr>
+        <tr><td><code>traces</code></td><td><code>trace_id</code>, <code>timestamp</code>, <code>spans</code> (each: <code>service</code>, <code>operation</code>, <code>duration_ms</code>, <code>status</code>, <code>error</code>)</td></tr>
+        <tr><td><code>task_description</code></td><td>One paragraph on what was observed. Shown as the incident brief.</td></tr>
+      </tbody>
+    </table>
+    <p>Hindsight can only name a root cause that appears in <code>commits</code>, <code>config_changes</code> or <code>infra_events</code>, so include every change from the day before the incident. Prefix the IDs with <code>commit-</code>, <code>cfg-</code> and <code>infra-</code>.</p>
+
+    <h2>Smallest working example</h2>
+<pre><code>{
+  "task_description": "Checkout returned 503s for 20 minutes.",
+  "service_graph": { "web": ["db"], "db": [] },
+  "services": [
+    { "name": "web", "status": "degraded", "error_rate_during_incident": 41.0 },
+    { "name": "db", "status": "down", "error_rate_during_incident": 96.5 }
+  ],
+  "incident_window": { "start": "2026-10-01T10:00:00Z", "end": "2026-10-01T10:20:00Z" },
+  "logs": {
+    "db": [
+      { "id": "db-1", "timestamp": "2026-10-01T10:01:00Z", "level": "ERROR",
+        "message": "FATAL: remaining connection slots are reserved" }
+    ],
+    "web": []
+  },
+  "config_changes": [
+    { "config_id": "cfg-17", "service": "db", "timestamp": "2026-10-01T09:55:00Z",
+      "key": "max_connections", "old_value": "400", "new_value": "40",
+      "description": "Lowered max_connections during cost review" }
+  ]
+}</code></pre>
+  </article>
+</main>
+</body>
+</html>

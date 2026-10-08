@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hindsight</title>
+<meta name="description" content="Hindsight investigates a production incident from its telemetry and writes the postmortem, with every claim tied to the evidence behind it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/copilot/copilot.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#/" aria-label="Hindsight home">
+    <span class="brand-mark" aria-hidden="true">E</span>
+    <span class="brand-name">Hindsight</span>
+  </a>
+  <p class="bar-note" id="bar-note"></p>
+  <nav class="bar-nav">
+    <a href="#/">Incidents</a>
+    <a href="/lab">Benchmark lab</a>
+  </nav>
+</header>
+
+<main id="home" class="home" hidden>
+  <section class="intro">
+    <h1>The postmortem,<br>with its evidence.</h1>
+    <p class="lede">Hand Hindsight an incident. It reads the logs, traces, commits and config changes, names what started the outage, and writes the postmortem. Every claim carries a tag back to the evidence it came from.</p>
+    <div class="notice" id="notice" hidden></div>
+  </section>
+
+  <section class="intake" aria-labelledby="intake-h">
+    <div class="section-head">
+      <h2 id="intake-h">Open an incident</h2>
+      <label class="upload">
+        <input type="file" id="bundle-file" accept="application/json,.json">
+        <span>Upload your own incident bundle</span>
+      </label>
+    </div>
+    <p class="hint">Sample incidents have a known answer, so the investigation is graded when it finishes. Your own bundle is investigated the same way and never graded. <a href="/static/copilot/bundle-format.html">Bundle format</a></p>
+    <ul class="cases" id="cases"></ul>
+  </section>
+
+  <section class="history" aria-labelledby="history-h">
+    <div class="section-head"><h2 id="history-h">Investigations</h2></div>
+    <p class="hint" id="history-empty">Nothing investigated yet. Open an incident above.</p>
+    <ul class="runs" id="runs"></ul>
+  </section>
+</main>
+
+<main id="desk" class="desk" hidden>
+  <div class="desk-head">
+    <div>
+      <p class="eyebrow" id="desk-id"></p>
+      <h1 id="desk-title">Investigation</h1>
+    </div>
+    <ol class="rail" id="rail" aria-label="Investigation stages">
+      <li data-phase="triage"><span>Triage</span><small id="m-triage"></small></li>
+      <li data-phase="diagnosis"><span>Diagnosis</span><small id="m-reason"></small></li>
+      <li data-phase="research"><span>Research</span><small>web search</small></li>
+      <li data-phase="report"><span>Postmortem</span><small id="m-writer"></small></li>
+    </ol>
+    <dl class="meter" id="meter" aria-label="Cost so far">
+      <div><dt>Lookups</dt><dd id="meter-lookups">0</dd></div>
+      <div><dt>Model calls</dt><dd id="meter-calls">0</dd></div>
+      <div><dt>Cost</dt><dd id="meter-cost">$0.0000</dd></div>
+    </dl>
+  </div>
+  <div class="notice" id="desk-notice" hidden></div>
+
+  <div class="columns">
+    <section class="col case" aria-labelledby="case-h">
+      <h2 id="case-h">Incident</h2>
+      <p class="brief" id="brief"></p>
+      <p class="window" id="window"></p>
+      <figure class="map">
+        <svg id="graph" role="img" aria-label="Service dependency map"></svg>
+        <figcaption>Arrows point from a service to what it depends on. Numbered pins show the order the failure spread.</figcaption>
+      </figure>
+      <h3>Changes before the incident</h3>
+      <ul class="changes" id="changes"></ul>
+    </section>
+
+    <section class="col ledger" aria-labelledby="ledger-h">
+      <h2 id="ledger-h">Evidence</h2>
+      <ol class="exhibits" id="exhibits" aria-live="polite"></ol>
+      <p class="working" id="working" hidden><span class="pulse" aria-hidden="true"></span><span id="working-text">Reading telemetry</span></p>
+    </section>
+
+    <section class="col findings" aria-labelledby="findings-h">
+      <h2 id="findings-h">Findings</h2>
+      <div id="verdict" class="pending">The diagnosis appears here once the evidence is in.</div>
+      <div id="grade"></div>
+      <div id="refs"></div>
+    </section>
+  </div>
+
+  <section class="doc-wrap" id="doc-wrap" hidden aria-labelledby="doc-h">
+    <div class="section-head">
+      <h2 id="doc-h">Postmortem</h2>
+      <div class="doc-actions">
+        <button type="button" id="copy-md">Copy Markdown</button>
+        <a class="button" id="download-md" href="#">Download .md</a>
+      </div>
+    </div>
+    <article class="doc" id="doc"></article>
+  </section>
+</main>
+
+<script src="/static/copilot/copilot.js"></script>
+</body>
+</html>
