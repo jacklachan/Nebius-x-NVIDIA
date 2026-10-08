@@ -22,7 +22,7 @@ from dataclasses import replace
 
 from copilot import incidents
 from copilot.bundle import BundleError, build_bundle, describe, named_paths
-from copilot.bench import BASELINES, parse_seeds, run_baseline, run_benchmark
+from copilot.bench import BASELINES, ORACLE, ORACLE_ABOUT, parse_seeds, run_baseline, run_benchmark
 from copilot.config import ROLE_REASON, ROLE_TRIAGE, ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
 from copilot.llm import LLMError, TokenFactoryClient
@@ -138,8 +138,9 @@ def _save_bench(result: dict, args: argparse.Namespace) -> None:
 async def _bench(args: argparse.Namespace) -> int:
     if args.baseline:
         result = run_baseline(parse_seeds(args.seeds), args.difficulty, args.baseline)
-        result.update(label=args.baseline, kind="baseline", models={},
-                      about=BASELINES[args.baseline])
+        is_oracle = args.baseline == ORACLE
+        result.update(label=args.baseline, kind="reference" if is_oracle else "baseline",
+                      models={}, about=ORACLE_ABOUT if is_oracle else BASELINES[args.baseline])
         _save_bench(result, args)
         return 0
     settings = load_settings()
@@ -203,8 +204,9 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("--seeds", default="0-9", help="for example 0-19 or 3,7,42")
     bench.add_argument("--difficulty", default="medium", choices=incidents.DIFFICULTIES)
     bench.add_argument("--label", default="routed", help="name for this configuration")
-    bench.add_argument("--baseline", choices=sorted(BASELINES),
-                       help="score a no-model heuristic instead of the investigator")
+    bench.add_argument("--baseline", choices=sorted(BASELINES) + [ORACLE],
+                       help="score a no-model heuristic, or the oracle (the ceiling), "
+                            "instead of the investigator")
     bench.add_argument("--triage", help="override the triage model ID")
     bench.add_argument("--reason", help="override the diagnosis model ID")
     bench.add_argument("--concurrency", type=int, default=2)

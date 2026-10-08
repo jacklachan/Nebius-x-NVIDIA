@@ -16,6 +16,7 @@ from typing import Any, Callable
 from copilot import incidents
 from copilot.core import ChatModel
 from copilot.investigator import Investigator
+from copilot.oracle import oracle_row
 from copilot.workspace import Workspace
 
 
@@ -81,8 +82,16 @@ def baseline_row(seed: int, difficulty: str, kind: str) -> dict[str, Any]:
     }
 
 
+ORACLE = "oracle"
+ORACLE_ABOUT = ("Given the answer, but still has to retrieve the evidence for every step "
+                "through the same tools. The ceiling.")
+
+
 def run_baseline(seeds: list[int], difficulty: str, kind: str) -> dict[str, Any]:
-    rows = [baseline_row(seed, difficulty, kind) for seed in seeds]
+    if kind == ORACLE:
+        rows = [oracle_row(seed, difficulty) for seed in seeds]
+    else:
+        rows = [baseline_row(seed, difficulty, kind) for seed in seeds]
     return {"difficulty": difficulty, "summary": summarize(rows), "rows": rows}
 
 

@@ -56,8 +56,9 @@ def test_benchmarks_endpoint_lists_summaries_without_rows(client, tmp_path, monk
 def test_committed_baseline_numbers_reproduce_from_the_code(client):
     """Every baseline figure the UI shows must come out of a fresh run."""
     saved = [b for b in client.get("/api/copilot/benchmarks").json() if b["kind"] == "baseline"]
+    saved += [b for b in client.get("/api/copilot/benchmarks").json() if b["kind"] == "reference"]
     assert {(b["label"], b["difficulty"]) for b in saved} == {
-        (kind, level) for kind in BASELINES for level in ("easy", "medium", "hard")}
+        (kind, level) for kind in [*BASELINES, "oracle"] for level in ("easy", "medium", "hard")}
     for entry in saved:
         seeds = parse_seeds(f"0-{entry['summary']['incidents'] - 1}")
         fresh = run_baseline(seeds, entry["difficulty"], entry["label"])
