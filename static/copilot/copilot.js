@@ -49,9 +49,11 @@
         : "";
       setNotice($("notice"), status.ready ? "" :
         "This server has no Nebius key, so new investigations cannot start. Recorded investigations below still open.");
-      const [incidents, runs] = await Promise.all([api("/incidents"), api("/investigations")]);
+      const [incidents, runs, results] = await Promise.all(
+        [api("/incidents"), api("/investigations"), api("/benchmarks")]);
       renderCases(incidents);
       renderRuns(runs);
+      renderBoard(results);
     } catch (err) {
       setNotice($("notice"), `Could not load incidents: ${err.message}`, true);
     }
@@ -90,6 +92,53 @@
         <span class="cell opt">${r.cost_usd == null ? "" : money(r.cost_usd)}</span>
         ${pill}</li>`;
     }).join("");
+  }
+
+  const BASELINE_NAMES = {
+    random: "Guess at random",
+    nearest: "Blame the latest change",
+    reddest: "Blame the latest change on the worst-hit service",
+  };
+  const LEVELS = ["easy", "medium", "hard"];
+
+  function meanAccuracy(row) {
+    const values = Object.values(row.cells).map((s) => s.root_cause_accuracy || 0);
+    return values.reduce((a, b) => a + b, 0) / (values.length || 1);
+  }
+
+  function renderBoard(results) {
+    $("measured").hidden = results.length === 0;
+    if (!results.length) return;
+    const rows = new Map();
+    for (const r of results) {
+      const row = rows.get(r.label) || { label: r.label, kind: r.kind, models: r.models, cells: {} };
+      row.cells[r.difficulty] = r.summary;
+      rows.set(r.label, row);
+    }
+    const ordered = [...rows.values()].sort((a, b) =>
+      (a.kind === "model") - (b.kind === "model") || meanAccuracy(a) - meanAccuracy(b));
+    const cell = (s) => {
+      if (!s || s.root_cause_accuracy == null) return '<td class="num">–</td>';
+      const pct = Math.round(s.root_cause_accuracy * 100);
+      return `<td class="num">${pct}%<i><b style="width:${pct}%"></b></i></td>`;
+    };
+    const body = ordered.map((row) => {
+      const models = [...new Set(Object.values(row.models || {}).map(shortModel))];
+      const costs = LEVELS.map((l) => (row.cells[l] || {}).mean_cost_usd).filter((n) => n != null);
+      const cost = row.kind === "model" && costs.length
+        ? money(costs.reduce((a, b) => a + b, 0) / costs.length) : "none";
+      return `<tr class="${esc(row.kind)}"><td>${esc(BASELINE_NAMES[row.label] || row.label)}
+        ${models.length ? `<small>${esc(models.join(" + "))}</small>` : ""}</td>
+        ${LEVELS.map((l) => cell(row.cells[l])).join("")}<td class="cost">${cost}</td></tr>`;
+    }).join("");
+    $("board").innerHTML = `<thead><tr><th>Approach</th>${
+      LEVELS.map((l) => `<th>${l}</th>`).join("")}<th>Cost per incident</th></tr></thead><tbody>${body}</tbody>`;
+    const counts = results.map((r) => r.summary.incidents);
+    const hasModel = ordered.some((row) => row.kind === "model");
+    const span = Math.min(...counts) === Math.max(...counts)
+      ? `${counts[0]}` : `${Math.min(...counts)} to ${Math.max(...counts)}`;
+    $("board-note").textContent = `${span} incidents per cell.`
+      + (hasModel ? "" : " Results for the Nemotron investigator have not been recorded yet.");
   }
 
   async function start(body, button) {
@@ -439,6 +488,8 @@
     }
     const svg = $("graph");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    // Wide topologies scroll sideways instead of shrinking until unreadable.
+    svg.style.minWidth = width > MAP_W ? `${Math.round(width * 0.8)}px` : "";
     svg.innerHTML = html + '<g id="spread"></g>';
   }
 

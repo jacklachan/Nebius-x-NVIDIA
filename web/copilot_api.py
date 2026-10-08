@@ -7,6 +7,7 @@ client that connects late (or reloads the page) replays the whole run.
 Routes (all under /api/copilot):
     GET  /status                         is the server configured to run?
     GET  /incidents                      sample incidents to try
+    GET  /benchmarks                     saved benchmark summaries
     POST /investigations                 start one; returns its id
     GET  /investigations                 recent investigations
     GET  /investigations/{id}            full record
@@ -40,6 +41,7 @@ from data.generator import get_available_tasks, load_scenario
 router = APIRouter(prefix="/api/copilot", tags=["copilot"])
 
 RECORDINGS_DIR = Path(__file__).resolve().parent.parent / "copilot" / "recordings"
+BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
 MAX_KEPT = 100
 MAX_BUNDLE_BYTES = 2_000_000
 # The hosted demo runs on the server's own key, so cap what a visitor can spend.
@@ -234,6 +236,23 @@ async def list_incidents() -> list[dict[str, Any]]:
             "services": len(scenario["service_graph"]),
         })
     return items
+
+
+@router.get("/benchmarks")
+async def benchmarks() -> list[dict[str, Any]]:
+    """Summaries of saved benchmark runs (`python -m copilot bench --out ...`)."""
+    out = []
+    for path in sorted(BENCHMARKS_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            out.append({
+                "label": data["label"], "kind": data.get("kind", "model"),
+                "about": data.get("about", ""), "difficulty": data["difficulty"],
+                "models": data.get("models", {}), "summary": data["summary"],
+            })
+        except (OSError, ValueError, KeyError):
+            continue
+    return out
 
 
 @router.post("/investigations")

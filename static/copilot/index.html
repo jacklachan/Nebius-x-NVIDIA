@@ -42,6 +42,13 @@
     <ul class="cases" id="cases"></ul>
   </section>
 
+  <section class="measured" id="measured" aria-labelledby="measured-h" hidden>
+    <div class="section-head"><h2 id="measured-h">How often it finds the cause</h2></div>
+    <p class="hint">Share of generated incidents where the root cause named was the real one. The investigator never sees the answer, and a fixed rubric does the scoring, not a model. The first rows are the shortcuts a hurried engineer reaches for.</p>
+    <div class="table-scroll"><table class="board" id="board"></table></div>
+    <p class="hint" id="board-note"></p>
+  </section>
+
   <section class="history" aria-labelledby="history-h">
     <div class="section-head"><h2 id="history-h">Investigations</h2></div>
     <p class="hint" id="history-empty">Nothing investigated yet. Open an incident above.</p>
@@ -75,7 +82,7 @@
       <p class="brief" id="brief"></p>
       <p class="window" id="window"></p>
       <figure class="map">
-        <svg id="graph" role="img" aria-label="Service dependency map"></svg>
+        <div class="map-scroll" tabindex="0"><svg id="graph" role="img" aria-label="Service dependency map"></svg></div>
         <figcaption>Arrows point from a service to what it depends on. Numbered pins show the order the failure spread.</figcaption>
       </figure>
       <h3>Changes before the incident</h3>
