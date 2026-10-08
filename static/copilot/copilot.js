@@ -66,15 +66,21 @@
           <span>${inc.source === "seed" ? `generated, seed ${esc(inc.seed)}` : "hand-written"}</span></div>
         <h3>${esc(inc.title)}</h3>
         <p>${esc(inc.description)}</p>
-        <button type="button" data-case="${i}" ${status.ready ? "" : "disabled"}>Investigate</button>
+        <div class="case-actions">
+          <button type="button" data-case="${i}" ${status.ready ? "" : "disabled"}>Investigate</button>
+          <button type="button" class="quiet" data-reference="${i}">See the reference answer</button>
+        </div>
       </article></li>`).join("");
     $("cases").onclick = (event) => {
-      const button = event.target.closest("button[data-case]");
+      const button = event.target.closest("button[data-case], button[data-reference]");
       if (!button) return;
-      const inc = incidents[Number(button.dataset.case)];
-      start(inc.source === "task"
+      const reference = button.dataset.reference != null;
+      const inc = incidents[Number(reference ? button.dataset.reference : button.dataset.case)];
+      const body = inc.source === "task"
         ? { source: "task", task_id: inc.task_id }
-        : { source: "seed", seed: inc.seed, difficulty: inc.difficulty }, button);
+        : { source: "seed", seed: inc.seed, difficulty: inc.difficulty };
+      if (reference) body.investigator = "oracle";
+      start(body, button, reference);
     };
   }
 
@@ -82,7 +88,8 @@
     $("history-empty").hidden = runs.length > 0;
     $("runs").innerHTML = runs.map((r) => {
       let pill = `<span class="pill">${esc(r.status)}</span>`;
-      if (r.cause_correct === true) pill = '<span class="pill good">root cause correct</span>';
+      if (r.reference) pill = '<span class="pill">reference answer</span>';
+      else if (r.cause_correct === true) pill = '<span class="pill good">root cause correct</span>';
       else if (r.cause_correct === false) pill = '<span class="pill bad">root cause wrong</span>';
       else if (r.status === "error") pill = '<span class="pill bad">stopped</span>';
       else if (r.status === "done") pill = '<span class="pill">not graded</span>';
@@ -98,6 +105,7 @@
     random: "Guess at random",
     nearest: "Blame the latest change",
     reddest: "Blame the latest change on the worst-hit service",
+    oracle: "Ceiling: an oracle given the answer",
   };
   const LEVELS = ["easy", "medium", "hard"];
 
@@ -115,8 +123,9 @@
       row.cells[r.difficulty] = r.summary;
       rows.set(r.label, row);
     }
+    const rank = { baseline: 0, model: 1, reference: 2 };
     const ordered = [...rows.values()].sort((a, b) =>
-      (a.kind === "model") - (b.kind === "model") || meanAccuracy(a) - meanAccuracy(b));
+      (rank[a.kind] ?? 1) - (rank[b.kind] ?? 1) || meanAccuracy(a) - meanAccuracy(b));
     const cell = (s) => {
       if (!s || s.root_cause_accuracy == null) return '<td class="num">–</td>';
       const pct = Math.round(s.root_cause_accuracy * 100);
@@ -124,6 +133,11 @@
     };
     const body = ordered.map((row) => {
       const models = [...new Set(Object.values(row.models || {}).map(shortModel))];
+      const lookups = LEVELS.map((l) => (row.cells[l] || {}).mean_lookups).filter((n) => n);
+      if (row.kind === "reference" && lookups.length) {
+        models.push(`still has to find the evidence: ${
+          (lookups.reduce((a, b) => a + b, 0) / lookups.length).toFixed(1)} lookups per incident`);
+      }
       const costs = LEVELS.map((l) => (row.cells[l] || {}).mean_cost_usd).filter((n) => n != null);
       const cost = row.kind === "model" && costs.length
         ? money(costs.reduce((a, b) => a + b, 0) / costs.length) : "none";
@@ -141,7 +155,7 @@
       + (hasModel ? "" : " Results for the Nemotron investigator have not been recorded yet.");
   }
 
-  async function start(body, button) {
+  async function start(body, button, alwaysAllowed) {
     if (button) button.disabled = true;
     try {
       const { id } = await api("/investigations", {
@@ -153,7 +167,7 @@
     } catch (err) {
       setNotice($("notice"), err.message, true);
       $("notice").scrollIntoView({ block: "center" });
-      if (button) button.disabled = !status.ready;
+      if (button) button.disabled = !status.ready && !alwaysAllowed;
     }
   }
 
@@ -209,6 +223,12 @@
       }
       const record = await api(`/investigations/${id}`);
       $("desk-title").textContent = record.title;
+      run.reference = Boolean(record.reference);
+      if (run.reference) {
+        for (const role of ["triage", "reason", "writer"]) $(`m-${role}`).textContent = "oracle";
+        setNotice($("desk-notice"), "Reference answer. This investigator was given the answer and "
+          + "shows the evidence a complete investigation rests on. It is not a model result.");
+      }
       document.title = `${record.title} · Hindsight`;
     } catch (err) {
       setWorking("");
@@ -403,7 +423,7 @@
     $("doc-wrap").hidden = false;
   }
 
-  function onWarning({ message }) { setNotice($("desk-notice"), message); }
+  function onWarning({ message }) { if (!run.reference) setNotice($("desk-notice"), message); }
 
   function onError({ message }) {
     run.finished = true;

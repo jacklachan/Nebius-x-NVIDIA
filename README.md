@@ -39,6 +39,7 @@ Web research uses the **Tavily** API ([copilot/research.py](copilot/research.py)
 - **Nothing internal reaches web search.** Search queries are written to be generic, and any query containing a service name, change ID, trace ID or email address from the incident is dropped before it is sent.
 - **Scored by rule, not by a model, and guessing does not pay.** Five scores ([copilot/evaluate.py](copilot/evaluate.py)): root cause, failure path (the right services in order), failure modes (the right label at each hop), grounding, and efficiency. Grounding checks the work: did it open the change it blames, and do the exhibits it cites actually bear on the incident? Naming the right commit without investigating scores 0.55; the same answer properly investigated scores 1.00.
 - **The test incidents do not give the answer away.** Generated incidents ([data/incident_generator.py](data/incident_generator.py)) have a symptom-only brief, a realistic diff on every commit, harmless changes that land closer to the outage than the culprit, and alarming-sounding changes that are innocent. In most of them the most recent change is not the cause.
+- **A real ceiling, and proof the incidents are solvable.** The oracle ([copilot/oracle.py](copilot/oracle.py)) is given the answer but still has to go through the same evidence tools, open every change it blames, and find an exhibit for each step of the failure. It scores 1.00 on every generated incident in about five lookups, which shows the evidence for each answer is really there and sets the bar for efficiency. A test fails if any generated incident cannot support its own answer.
 - **It says when it does not know.** An investigation that cannot name a cause produces a document that says so and lists the open questions.
 
 ## Run it
@@ -73,7 +74,7 @@ python -m copilot investigate --file my_incident.json --out postmortem.md
 python -m copilot bench --seeds 0-19 --difficulty medium --out benchmarks/routed-medium.json
 ```
 
-Without a key you can still see the interface: `python scripts/dev_ui_server.py` runs it with a scripted stand-in for the models. The stand-in reads the answer, so it demonstrates the UI and nothing about model quality.
+Without a key the app still shows real investigations: every sample incident has a **See the reference answer** button, which runs the oracle (below) with no model and no spend. For front-end work, `python scripts/dev_ui_server.py` runs the UI with a scripted stand-in for the models; it demonstrates the interface and nothing about model quality.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -119,6 +120,7 @@ copilot/            the product
   bundle.py         build an incident bundle from git repos and log files
   mcp_server.py     the same investigator as MCP tools
   evaluate.py       deterministic scoring, including grounding
+  oracle.py         reference investigator: the ceiling, and a solvability check
   taxonomy.py       failure-mode vocabulary
   bench.py          benchmark runner
 web/copilot_api.py  HTTP API and live event stream

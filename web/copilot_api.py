@@ -34,6 +34,7 @@ from copilot import incidents
 from copilot.config import ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
 from copilot.llm import TokenFactoryClient
+from copilot.oracle import Oracle
 from copilot.research import Researcher, TavilyClient
 from copilot.workspace import Workspace
 from data.generator import get_available_tasks, load_scenario
@@ -43,6 +44,7 @@ router = APIRouter(prefix="/api/copilot", tags=["copilot"])
 RECORDINGS_DIR = Path(__file__).resolve().parent.parent / "copilot" / "recordings"
 BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
 MAX_KEPT = 100
+ORACLE_PACE_S = 0.5
 MAX_BUNDLE_BYTES = 2_000_000
 # The hosted demo runs on the server's own key, so cap what a visitor can spend.
 MAX_CONCURRENT = int(os.environ.get("COPILOT_MAX_CONCURRENT", "2"))
@@ -61,6 +63,7 @@ class Investigation:
     source: str
     status: str = "running"            # running | done | error
     recorded: bool = False
+    reference: bool = False            # an oracle run, not a model result
     started_at: float = field(default_factory=time.time)
     ended_at: float | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -76,6 +79,7 @@ class Investigation:
             "source": self.source,
             "status": self.status,
             "recorded": self.recorded,
+            "reference": self.reference,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
             "cause": (done or {}).get("diagnosis", {}).get("cause"),
@@ -122,6 +126,7 @@ class _Store:
                 self.items[data["id"]] = Investigation(
                     id=data["id"], title=data["title"], source=data["source"],
                     status=data["status"], recorded=True,
+                    reference=bool(data.get("reference")),
                     started_at=data["started_at"], ended_at=data["ended_at"],
                     events=data["events"], report=data.get("report", ""),
                 )
@@ -149,6 +154,8 @@ class StartBody(BaseModel):
     seed: int = 42
     difficulty: str = "easy"
     bundle: dict[str, Any] | None = None
+    # "oracle" replays the reference answer: no model, no key, no spend.
+    investigator: Literal["nemotron", "oracle"] = "nemotron"
 
 
 def _scenario_for(body: StartBody) -> tuple[dict[str, Any], str]:
@@ -260,6 +267,15 @@ async def benchmarks() -> list[dict[str, Any]]:
 
 @router.post("/investigations")
 async def start(body: StartBody) -> dict[str, str]:
+    if body.investigator == "oracle":
+        if body.source == "bundle":
+            raise HTTPException(400, "A reference run needs an incident with a known answer.")
+        scenario, title = _scenario_for(body)
+        inv = Investigation(id=uuid.uuid4().hex[:12], title=title, source=body.source,
+                            reference=True)
+        store.add(inv)
+        asyncio.create_task(_run(inv, Oracle(scenario, pace=ORACLE_PACE_S)))
+        return {"id": inv.id}
     if not load_settings().api_key:
         raise HTTPException(
             503, "This server has no NEBIUS_API_KEY, so it cannot run new "
