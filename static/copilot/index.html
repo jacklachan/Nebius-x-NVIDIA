@@ -85,6 +85,10 @@
         <div class="map-scroll" tabindex="0"><svg id="graph" role="img" aria-label="Service dependency map"></svg></div>
         <figcaption>Arrows point from a service to what it depends on. Numbered pins show the order the failure spread.</figcaption>
       </figure>
+      <div id="onset-wrap" hidden>
+        <h3>First errors, in order</h3>
+        <ol class="onset" id="onset"></ol>
+      </div>
       <h3>Changes before the incident</h3>
       <ul class="changes" id="changes"></ul>
     </section>

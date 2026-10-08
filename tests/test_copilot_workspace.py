@@ -120,3 +120,34 @@ def test_candidate_ids_cover_commits_configs_and_infra():
     assert scenario["commits"][0]["hash"] in ids
     assert scenario["config_changes"][0]["config_id"] in ids
     assert scenario["infra_events"][0]["event_id"] in ids
+
+
+def test_error_onset_orders_services_by_first_error_during_the_incident():
+    from data.incident_generator import generate_incident
+
+    for seed in range(15):
+        incident = generate_incident(seed, "medium")
+        onset = Workspace(incident).brief()["error_onset"]
+        window = incident["incident_window"]
+
+        assert onset == sorted(onset, key=lambda r: (r["first_error"], r["service"]))
+        assert all(window["start"] <= row["first_error"] <= window["end"] for row in onset)
+        failing = {hop["service"] for hop in incident["ground_truth"]["chain"]}
+        healthy = {s["name"] for s in incident["services"] if s["status"] == "healthy"}
+        assert {row["service"] for row in onset} <= failing
+        assert not {row["service"] for row in onset} & healthy
+
+
+def test_error_onset_is_empty_without_errors_and_carries_no_labels():
+    scenario = {
+        "service_graph": {"web": []}, "services": [{"name": "web"}],
+        "incident_window": {"start": "2026-10-01T10:00:00Z", "end": "2026-10-01T10:20:00Z"},
+        "logs": {"web": [
+            {"id": "a", "timestamp": "2026-10-01T09:00:00Z", "level": "ERROR", "message": "old"},
+            {"id": "b", "timestamp": "2026-10-01T10:05:00Z", "level": "INFO", "message": "fine"}]},
+        "commits": [], "config_changes": [], "infra_events": [], "traces": [],
+        "task_difficulty": "unknown",
+    }
+    brief = Workspace(scenario).brief()
+    assert brief["error_onset"] == []
+    assert "relevant" not in json.dumps(brief)

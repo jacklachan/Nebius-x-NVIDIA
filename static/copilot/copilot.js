@@ -263,6 +263,11 @@
       <li data-change="${esc(c.id)}"><code>${esc(c.id)}</code><span>${esc(c.what)}</span>
       <span class="when">${esc(c.when)} · ${esc(c.where)}</span></li>`).join("");
 
+    const onset = brief.error_onset || [];
+    $("onset-wrap").hidden = onset.length === 0;
+    $("onset").innerHTML = onset.map((row) => `<li><strong>${esc(row.service)}</strong>
+      <span>${esc(String(row.first_error).slice(11, 19))} UTC · ${esc(row.errors)} errors</span></li>`).join("");
+
     drawGraph(brief);
   }
 

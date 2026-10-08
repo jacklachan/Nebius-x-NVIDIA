@@ -65,6 +65,28 @@ def normalise_call(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]
     return tool, args
 
 
+_LOUD = {"ERROR", "CRITICAL", "FATAL"}
+
+
+def error_onset(scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    """When each service first logged an error at or after the incident
+    began, earliest first. This is what an error-rate dashboard shows at a
+    glance, and it tells an investigator where to look first: the service
+    that failed first is usually nearer the cause than the one failing most.
+    Computed from the logs alone."""
+    window = scenario.get("incident_window") or {}
+    start, end = str(window.get("start", "")), str(window.get("end", "")) or "~"
+    rows = []
+    for service, entries in (scenario.get("logs") or {}).items():
+        loud = sorted(str(e.get("timestamp", "")) for e in entries
+                      if str(e.get("level", "")).upper() in _LOUD
+                      and start <= str(e.get("timestamp", "")) <= end)
+        if loud:
+            rows.append({"service": service, "first_error": loud[0], "errors": len(loud)})
+    rows.sort(key=lambda r: (r["first_error"], r["service"]))
+    return rows
+
+
 _PLACEHOLDER_TRUTH = {"cause": "", "cause_type": "commit", "chain": []}
 
 
@@ -102,6 +124,7 @@ class Workspace:
             "config_changes": obs.available_config_changes,
             "trace_ids": obs.available_trace_ids,
             "infra_events": obs.available_infra_events,
+            "error_onset": error_onset(scenario),
         }
         self.evidence: list[Evidence] = []
         self._seen: dict[tuple, str] = {}

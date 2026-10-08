@@ -65,7 +65,7 @@ Tools:
 {chr(10).join(f"  {name}({spec['args']}) - {spec['about']}" for name, spec in TOOLS.items())}
 
 How to investigate:
-- Start with ERROR logs of the worst-affected service during the incident.
+- The brief's error_onset lists which services logged errors during the incident and when each began. Start with the service that failed first: it is usually closer to the cause than the one with the highest error rate.
 - Outages usually follow a change. Read the diff or value of every commit and config change that landed on a suspect service shortly before the incident began. A commit message alone proves nothing.
 - Follow the dependency graph: a failing service is often a victim of something it depends on.
 - Check infrastructure events close to the incident start.
