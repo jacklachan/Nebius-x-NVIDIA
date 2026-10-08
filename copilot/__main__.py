@@ -4,6 +4,7 @@
     python -m copilot investigate --task task2_cascade_chain
     python -m copilot investigate --file my_incident.json
     python -m copilot bundle --start ... --end ... --repo api=../api --logs api=api.log
+    python -m copilot mcp
     python -m copilot models
     python -m copilot bench --seeds 0-19 --difficulty medium --label routed
 """
@@ -223,10 +224,20 @@ def main(argv: list[str] | None = None) -> int:
                         help="how far before the incident to collect commits and logs")
     bundle.add_argument("--out", default="incident.json")
 
+    mcp = sub.add_parser("mcp", help="serve Hindsight to MCP clients")
+    mcp.add_argument("--http", action="store_true",
+                     help="serve Streamable HTTP at /mcp instead of stdio")
+    mcp.add_argument("--host", default="127.0.0.1")
+    mcp.add_argument("--port", type=int, default=8765)
+
     args = parser.parse_args(argv)
     try:
         if args.command == "investigate":
             return asyncio.run(_investigate(args))
+        if args.command == "mcp":
+            from copilot.mcp_server import run as run_mcp
+            run_mcp(http=args.http, host=args.host, port=args.port)
+            return 0
         if args.command == "bundle":
             return _bundle(args)
         if args.command == "bench":

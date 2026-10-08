@@ -6,3 +6,4 @@ httpx>=0.25.0
 requests>=2.31.0
 openenv-core==0.2.3
 websockets>=11.0
+mcp>=2.0,<3

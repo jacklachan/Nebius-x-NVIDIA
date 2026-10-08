@@ -80,6 +80,31 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
+## Use it from a coding agent (MCP)
+
+Hindsight is also an MCP server, so an agent in your editor can investigate an incident without leaving the repository it is working in.
+
+```json
+{
+  "mcpServers": {
+    "hindsight": {
+      "command": "/path/to/Nebius-x-NVIDIA/.venv/bin/python",
+      "args": ["-m", "copilot", "mcp"],
+      "cwd": "/path/to/Nebius-x-NVIDIA"
+    }
+  }
+}
+```
+
+| Tool | What it does |
+|---|---|
+| `build_incident_bundle` | Collects the day before an incident from local git repositories and log files into a bundle file. |
+| `investigate_bundle_file` | Investigates that file and returns the root cause, how it spread, open questions and the postmortem. |
+| `investigate_incident` | The same, with the bundle passed inline. |
+| `investigate_sample`, `list_sample_incidents` | Try it on incidents with a known answer; the result is graded. |
+
+`python -m copilot mcp --http --port 8765` serves the same thing over Streamable HTTP at `/mcp`. The two tools that read local paths are only offered over stdio, where the caller is the machine's own user.
+
 To deploy it on a Nebius Serverless Endpoint, see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Layout
@@ -92,6 +117,7 @@ copilot/            the product
   research.py       Tavily search with private terms kept out of queries
   report.py         the postmortem document
   bundle.py         build an incident bundle from git repos and log files
+  mcp_server.py     the same investigator as MCP tools
   bench.py          benchmark runner
 web/copilot_api.py  HTTP API and live event stream
 static/copilot/     the UI
