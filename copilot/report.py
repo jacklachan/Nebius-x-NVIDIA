@@ -10,12 +10,14 @@ write: the title, the summary, the impact statement and the action items.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
 from copilot.config import ROLE_WRITER
 from copilot.core import ChatModel, Diagnosis, brief_text, clip, ledger_text
 from copilot.llm import extract_json
+from copilot.research import Reference, references_text
 from copilot.workspace import Evidence
 
 PRIORITIES = ("P0", "P1", "P2")
@@ -31,7 +33,11 @@ Reply with ONE JSON object and nothing else:
   "lessons": ["<one sentence each>"]
 }
 
-Give three to five action items. At least one must prevent the root cause and at least one must speed up detection. Do not propose anything the evidence gives no reason for."""
+Give three to five action items. At least one must prevent the root cause and at least one must speed up detection. Do not propose anything the evidence gives no reason for.
+
+If external references are listed, use them to make action items concrete and cite the ones you relied on as [R1], [R2] in the "why" field. Cite only references that are listed."""
+
+_REF_CITE_RE = re.compile(r"\s*\[(R\d+)\]")
 
 
 async def write_narrative(
@@ -39,13 +45,16 @@ async def write_narrative(
     brief: dict[str, Any],
     diagnosis: Diagnosis,
     evidence: list[Evidence],
+    references: list[Reference] | None = None,
 ) -> dict[str, Any]:
     """Ask the writer model for the prose sections. Never raises on a bad
     reply: the caller always gets a usable narrative."""
+    references = references or []
     user = (
         f"INCIDENT BRIEF\n{brief_text(brief)}\n\n"
         f"DIAGNOSIS\n{json.dumps(diagnosis.as_dict(), separators=(',', ':'))}\n\n"
-        f"EVIDENCE LEDGER\n{ledger_text(evidence)}"
+        f"EVIDENCE LEDGER\n{ledger_text(evidence)}\n\n"
+        f"EXTERNAL REFERENCES\n{references_text(references)}"
     )
     reply = await llm.chat(
         ROLE_WRITER,
@@ -57,7 +66,13 @@ async def write_narrative(
         raw = extract_json(reply.text)
     except ValueError:
         raw = {}
-    return _clean_narrative(raw, brief, diagnosis)
+    narrative = _clean_narrative(raw, brief, diagnosis)
+    known = {ref.id for ref in references}
+    for item in narrative["action_items"]:
+        # Drop citations of references that were never retrieved.
+        item["why"] = _REF_CITE_RE.sub(
+            lambda m: m.group(0) if m.group(1) in known else "", item["why"])
+    return narrative
 
 
 def _clean_narrative(
@@ -131,6 +146,7 @@ def render_postmortem(
     evidence: list[Evidence],
     narrative: dict[str, Any],
     usage: dict[str, Any] | None = None,
+    references: list[Reference] | None = None,
 ) -> str:
     """Assemble the postmortem as Markdown."""
     window = brief.get("incident_window", {})
@@ -210,6 +226,11 @@ def render_postmortem(
     if narrative["lessons"]:
         lines += ["## Lessons", ""]
         lines += [f"- {lesson}" for lesson in narrative["lessons"]]
+        lines.append("")
+
+    if references:
+        lines += ["## References", ""]
+        lines += [f"- **[{ref.id}]** [{ref.title}]({ref.url})" for ref in references]
         lines.append("")
 
     lines += ["## Evidence", ""]

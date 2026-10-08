@@ -18,6 +18,7 @@ from copilot import incidents
 from copilot.config import ROLES, load_dotenv, load_settings
 from copilot.investigator import Investigator
 from copilot.llm import LLMError, TokenFactoryClient
+from copilot.research import Researcher, TavilyClient
 from copilot.workspace import Workspace
 
 
@@ -41,6 +42,11 @@ def _print_event(event: dict) -> None:
         for i, hop in enumerate(event["chain"], start=1):
             cites = ", ".join(hop["evidence"]) or "no citation"
             print(f"  {i}. {hop['service']}: {hop['effect']}  [{cites}]")
+    elif kind == "research":
+        for query in event["queries"]:
+            print(f"  searched: {query}")
+        for ref in event["references"]:
+            print(f"    {ref['id']}: {ref['title']}  {ref['url']}")
     elif kind == "grade":
         verdict = "correct" if event["cause_correct"] else "WRONG"
         print(f"\nGRADE  {event['score']:.3f}   root cause {verdict}"
@@ -65,7 +71,10 @@ async def _investigate(args: argparse.Namespace) -> int:
     else:
         scenario = incidents.from_seed(args.seed, args.difficulty)
 
-    investigator = Investigator(Workspace(scenario), TokenFactoryClient())
+    llm = TokenFactoryClient()
+    key = llm.settings.tavily_api_key
+    researcher = Researcher(llm, TavilyClient(key)) if key else None
+    investigator = Investigator(Workspace(scenario), llm, researcher=researcher)
     failed = False
     async for event in investigator.run():
         if args.json:

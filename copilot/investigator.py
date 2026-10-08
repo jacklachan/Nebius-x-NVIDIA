@@ -7,6 +7,8 @@ Three stages, three models:
   diagnosis  One or two calls on the large Nemotron model. Reads the whole
              evidence ledger and commits to a root cause and causal chain,
              citing evidence IDs. It may ask for a few more lookups once.
+  research   Optional. Web search (Tavily) for the diagnosed failure mode,
+             with incident-specific terms kept out of the queries.
   report     One call on the mid-size model for the prose of the postmortem;
              the factual sections are assembled in code (see report.py).
 
@@ -22,6 +24,7 @@ from copilot.config import ROLE_REASON, ROLE_TRIAGE
 from copilot.core import ChatModel, Diagnosis, brief_text, ledger_text
 from copilot.llm import LLMError, extract_json
 from copilot.report import fallback_narrative, render_postmortem, write_narrative
+from copilot.research import Reference, Researcher, ResearchError
 from copilot.workspace import TOOLS, Workspace
 from data.seed_generator import FAILURE_TEMPLATES
 
@@ -85,9 +88,12 @@ class Investigator:
         workspace: Workspace,
         llm: ChatModel,
         max_triage_steps: int = MAX_TRIAGE_STEPS,
+        researcher: Researcher | None = None,
     ) -> None:
         self.ws = workspace
         self.llm = llm
+        self.researcher = researcher
+        self.references: list[Reference] = []
         self.max_triage_steps = max_triage_steps
         self.diagnosis: Diagnosis | None = None
         self.grade: dict[str, Any] | None = None
@@ -114,11 +120,23 @@ class Investigator:
         if self.grade is not None:
             yield {"type": "grade", **self.grade}
 
-        yield {"type": "phase", "phase": "report"}
         brief = self.ws.brief()
+        if self.researcher is not None and self.diagnosis.root_cause_ids:
+            yield {"type": "phase", "phase": "research"}
+            try:
+                self.references = await self.researcher.run(brief, self.diagnosis)
+                yield {"type": "research",
+                       "queries": self.researcher.queries,
+                       "queries_dropped_as_private": self.researcher.dropped,
+                       "references": [ref.as_dict() for ref in self.references]}
+            except (ResearchError, LLMError) as exc:
+                # Research improves the action items; it is never required.
+                yield {"type": "warning", "message": f"Research skipped: {exc}"}
+
+        yield {"type": "phase", "phase": "report"}
         try:
             self.narrative = await write_narrative(
-                self.llm, brief, self.diagnosis, self.ws.evidence)
+                self.llm, brief, self.diagnosis, self.ws.evidence, self.references)
         except LLMError as exc:
             # The diagnosis is the valuable part; never lose it to a failed
             # prose call. Fall back to a document built from the facts alone.
@@ -126,13 +144,14 @@ class Investigator:
             self.narrative = fallback_narrative(brief, self.diagnosis)
         usage = self.llm.meter.snapshot()
         self.report = render_postmortem(
-            brief, self.diagnosis, self.ws.evidence, self.narrative, usage)
+            brief, self.diagnosis, self.ws.evidence, self.narrative, usage, self.references)
         yield {"type": "report", "narrative": self.narrative, "markdown": self.report}
         yield {
             "type": "done",
             "diagnosis": self.diagnosis.as_dict(),
             "grade": self.grade,
             "evidence": [e.as_dict() for e in self.ws.evidence if e.ok],
+            "references": [ref.as_dict() for ref in self.references],
             "usage": usage,
         }
 
