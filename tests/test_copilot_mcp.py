@@ -149,3 +149,40 @@ def test_build_bundle_then_investigate_the_file(tmp_path):
     investigated = _call("investigate_bundle_file", {"bundle_path": str(out)})
     assert not investigated.is_error
     assert "## Evidence" in investigated.structured_content["postmortem_markdown"]
+
+
+def test_hosted_guard_applies_the_web_limits(monkeypatch):
+    import web.copilot_api as api
+    from web.mcp_mount import spend_guard
+
+    monkeypatch.setattr(api, "store", api._Store())
+    monkeypatch.setattr(api, "MAX_PER_DAY", 1)
+
+    async def go():
+        async with Client(mcp_server.create_server(False, guard=spend_guard)) as client:
+            first = await client.call_tool("investigate_incident", {"bundle": BUNDLE})
+            second = await client.call_tool("investigate_incident", {"bundle": BUNDLE})
+            listing = await client.call_tool("list_sample_incidents", {})
+            return first, second, listing
+
+    first, second, listing = asyncio.run(go())
+    assert not first.is_error
+    assert second.is_error and "Daily demo limit" in second.content[0].text
+    assert not listing.is_error  # free tools are never limited
+
+
+def test_hosted_guard_limits_concurrency(monkeypatch):
+    import web.copilot_api as api
+    import web.mcp_mount as mount
+
+    monkeypatch.setattr(api, "store", api._Store())
+    monkeypatch.setattr(mount, "_running", api.MAX_CONCURRENT)
+    result = _call_with_guard("investigate_incident", {"bundle": BUNDLE}, mount.spend_guard)
+    assert result.is_error and "Other investigations are running" in result.content[0].text
+
+
+def _call_with_guard(tool, args, guard):
+    async def go():
+        async with Client(mcp_server.create_server(False, guard=guard)) as client:
+            return await client.call_tool(tool, args)
+    return asyncio.run(go())

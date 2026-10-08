@@ -74,7 +74,19 @@ the key did not reach the container.
 nebius ai endpoint logs $ENDPOINT_ID
 ```
 
-## 4. Spending limits
+## 4. MCP endpoint
+
+The deployed app also answers MCP clients at `$ENDPOINT_URL/api/copilot/mcp`.
+The MCP transport refuses requests whose `Host` header it does not expect, so
+add the endpoint's hostname when you create it:
+
+```bash
+  --env COPILOT_MCP_ALLOWED_HOSTS=<endpoint_hostname>
+```
+
+Without it the UI and API work and MCP calls get `421 Misdirected Request`.
+
+## 5. Spending limits
 
 The demo runs on your Token Factory key, so the server caps usage. Both are
 environment variables:
@@ -84,11 +96,14 @@ environment variables:
 | `COPILOT_MAX_CONCURRENT` | 2 | Investigations running at once |
 | `COPILOT_MAX_RUNS_PER_DAY` | 200 | New investigations per day, per container |
 
+The limits cover the UI, the HTTP API and MCP together. Uploads over 4 MB are
+refused.
+
 Recorded investigations in `copilot/recordings/` open without spending
 anything, so the demo still shows real runs if the limit is reached or the
 credits run out.
 
-## 5. Stop or remove
+## 6. Stop or remove
 
 ```bash
 nebius ai endpoint stop --id $ENDPOINT_ID      # no compute charge while stopped

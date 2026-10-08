@@ -103,7 +103,7 @@ Hindsight is also an MCP server, so an agent in your editor can investigate an i
 | `investigate_incident` | The same, with the bundle passed inline. |
 | `investigate_sample`, `list_sample_incidents` | Try it on incidents with a known answer; the result is graded. |
 
-`python -m copilot mcp --http --port 8765` serves the same thing over Streamable HTTP at `/mcp`. The two tools that read local paths are only offered over stdio, where the caller is the machine's own user.
+The web app serves the same thing over Streamable HTTP at `/api/copilot/mcp`, under the same spending limits as the UI (`python -m copilot mcp --http` runs it on its own). The two tools that read local paths are only offered over stdio, where the caller is the machine's own user.
 
 To deploy it on a Nebius Serverless Endpoint, see [docs/DEPLOY.md](docs/DEPLOY.md).
 

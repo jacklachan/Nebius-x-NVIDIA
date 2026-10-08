@@ -15,8 +15,9 @@ registered; a remote caller passes the bundle itself.
 
 from __future__ import annotations
 
+from contextlib import AbstractAsyncContextManager, nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -44,7 +45,17 @@ def make_llm() -> Any:
     return TokenFactoryClient()
 
 
-async def _investigate(scenario: dict[str, Any], ctx: Context | None) -> dict[str, Any]:
+Guard = Callable[[], AbstractAsyncContextManager[Any]]
+
+
+async def _investigate(
+    scenario: dict[str, Any], ctx: Context | None, guard: Guard | None = None,
+) -> dict[str, Any]:
+    async with (guard() if guard else nullcontext()):
+        return await _run_investigation(scenario, ctx)
+
+
+async def _run_investigation(scenario: dict[str, Any], ctx: Context | None) -> dict[str, Any]:
     llm = make_llm()
     key = load_settings().tavily_api_key
     researcher = Researcher(llm, TavilyClient(key)) if key else None
@@ -85,9 +96,11 @@ async def _investigate(scenario: dict[str, Any], ctx: Context | None) -> dict[st
     return result
 
 
-def create_server(local_files: bool) -> MCPServer:
+def create_server(local_files: bool, guard: Guard | None = None) -> MCPServer:
     """Build the server. ``local_files`` adds the tools that read paths on
-    this machine; only enable it when the caller is the machine's own user."""
+    this machine; only enable it when the caller is the machine's own user.
+    ``guard`` wraps every investigation; a hosted server uses it to cap what
+    anonymous callers can spend, raising ``ToolError`` when over the limit."""
     server = MCPServer(
         "hindsight",
         title="Hindsight",
@@ -122,7 +135,7 @@ def create_server(local_files: bool) -> MCPServer:
                         else incidents.from_seed(seed, difficulty))
         except incidents.IncidentError as exc:
             raise ToolError(str(exc)) from exc
-        return await _investigate(scenario, ctx)
+        return await _investigate(scenario, ctx, guard)
 
     @server.tool(title="Investigate an incident")
     async def investigate_incident(ctx: Context, bundle: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +150,7 @@ def create_server(local_files: bool) -> MCPServer:
             raise ToolError(str(exc)) from exc
         scenario.pop("ground_truth", None)
         scenario.pop("relevant_fact_ids", None)
-        return await _investigate(scenario, ctx)
+        return await _investigate(scenario, ctx, guard)
 
     if not local_files:
         return server
@@ -189,7 +202,7 @@ def create_server(local_files: bool) -> MCPServer:
             raise ToolError(str(exc)) from exc
         scenario.pop("ground_truth", None)
         scenario.pop("relevant_fact_ids", None)
-        return await _investigate(scenario, ctx)
+        return await _investigate(scenario, ctx, guard)
 
     return server
 

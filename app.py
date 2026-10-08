@@ -13,7 +13,8 @@ repo's smoke tests and inference script:
   * GET  /metadata
 
 The product UI (the incident copilot) is served at ``/`` and talks to
-``/api/copilot``. The original environment console is at ``/lab`` with its
+``/api/copilot``. The same investigator is offered to MCP clients at
+``/api/copilot/mcp``. The original environment console is at ``/lab`` with its
 streaming agent routes under ``/api``.
 """
 
@@ -31,7 +32,9 @@ from models.action import Action
 from models.observation import Observation
 from models.state import EnvironmentState
 from engine.environment import PostmortemEnvironment
+from web.copilot_api import BodyLimit
 from web.copilot_api import router as copilot_router
+from web.mcp_mount import install as install_mcp
 from web.runner import router as live_router
 
 app = create_app(
@@ -115,6 +118,8 @@ async def metadata() -> dict[str, Any]:
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(live_router)
 app.include_router(copilot_router)
+install_mcp(app)
+app.add_middleware(BodyLimit)
 
 
 @app.get("/", include_in_schema=False)
