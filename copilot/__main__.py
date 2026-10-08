@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 from dataclasses import replace
@@ -80,7 +81,10 @@ async def _investigate(args: argparse.Namespace) -> int:
     researcher = Researcher(llm, TavilyClient(key)) if key else None
     investigator = Investigator(Workspace(scenario), llm, researcher=researcher)
     failed = False
+    started = time.time()
+    events: list[dict] = []
     async for event in investigator.run():
+        events.append(event)
         if args.json:
             print(json.dumps(event))
         else:
@@ -89,6 +93,19 @@ async def _investigate(args: argparse.Namespace) -> int:
         if event["type"] == "report" and args.out:
             Path(args.out).write_text(event["markdown"], encoding="utf-8")
             print(f"\nPostmortem written to {args.out}")
+    if args.record and not failed:
+        # Same shape the web API serves, so the hosted demo can replay this
+        # real run without spending anything (see web/copilot_api.py).
+        record = {
+            "id": f"rec-{scenario['task_id']}".replace("_", "-"),
+            "title": scenario.get("task_name") or scenario["task_id"],
+            "source": "file" if args.file else "task" if args.task else "seed",
+            "status": "done", "started_at": started, "ended_at": time.time(),
+            "events": events, "report": investigator.report,
+        }
+        Path(args.record).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.record).write_text(json.dumps(record, indent=1), encoding="utf-8")
+        print(f"Recording written to {args.record}")
     return 1 if failed else 0
 
 
@@ -158,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("--task", help="a hand-written benchmark task ID")
     inv.add_argument("--file", help="path to an incident bundle (JSON)")
     inv.add_argument("--out", help="write the postmortem (Markdown) to this path")
+    inv.add_argument("--record", help="save the whole run as a replayable recording "
+                                      "(put it in copilot/recordings/ to ship it with the demo)")
     inv.add_argument("--json", action="store_true", help="print raw events, one per line")
 
     sub.add_parser("models", help="check the configured models exist on Token Factory")
