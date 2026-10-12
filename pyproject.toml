@@ -3,11 +3,13 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "postmortemenv"
-version = "1.0.0"
-description = "PostmortemEnv — An epistemic RL environment where LLM agents investigate cloud outages"
+name = "hindsight"
+version = "2.0.0"
+description = "Hindsight: investigates production incidents with NVIDIA Nemotron on Nebius Token Factory and writes the postmortem"
 authors = [
-    {name = "Three Musketeers"}
+    {name = "L Mohit Jain"},
+    {name = "Tanush Deepak"},
+    {name = "Utkarsh Singh Yadav"}
 ]
 dependencies = [
     "pydantic>=2.4.0",
@@ -16,7 +18,8 @@ dependencies = [
     "uvicorn>=0.23.0",
     "websockets>=11.0",
     "httpx>=0.25.0",
-    "requests>=2.31.0"
+    "requests>=2.31.0",
+    "mcp>=2.0,<3"
 ]
 requires-python = ">=3.11"
 

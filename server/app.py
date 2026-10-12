@@ -11,7 +11,7 @@ except ModuleNotFoundError:
 
 
 def main(host: str = "0.0.0.0", port: int = 7860):
-    """Run the PostmortemEnv server directly."""
+    """Run the Hindsight server directly."""
     import uvicorn
 
     uvicorn.run(app, host=host, port=port)
