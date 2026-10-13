@@ -219,23 +219,13 @@
     set("stat-cases", incidents.length);
   }
 
-  // Cards lean toward the pointer and a light follows it across the glass.
+  // A faint light follows the pointer across an incident card.
   $("cases").addEventListener("pointermove", (event) => {
     const card = event.target.closest(".case-card");
     if (!card || reducedMotion) return;
     const box = card.getBoundingClientRect();
-    const x = (event.clientX - box.left) / box.width, y = (event.clientY - box.top) / box.height;
-    card.style.setProperty("--mx", `${x * 100}%`);
-    card.style.setProperty("--my", `${y * 100}%`);
-    card.style.setProperty("--ry", `${(x - 0.5) * 9}deg`);
-    card.style.setProperty("--rx", `${(0.5 - y) * 7}deg`);
-  });
-  $("cases").addEventListener("pointerout", (event) => {
-    const card = event.target.closest(".case-card");
-    if (card && !card.contains(event.relatedTarget)) {
-      card.style.setProperty("--rx", "0deg");
-      card.style.setProperty("--ry", "0deg");
-    }
+    card.style.setProperty("--mx", `${event.clientX - box.left}px`);
+    card.style.setProperty("--my", `${event.clientY - box.top}px`);
   });
 
   async function start(body, button, alwaysAllowed) {

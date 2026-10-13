@@ -20,9 +20,9 @@ const NODE_VERT = `
     float near = smoothstep(0.55, 0.0, distance(ndc * vec2(uAspect, 1.0), uMouse * vec2(uAspect, 1.0)));
     float twinkle = 0.55 + 0.45 * sin(uTime * 1.3 + aSeed * 6.2831);
     float alarm = aKind * (0.5 + 0.5 * sin(uTime * 3.2 + aSeed * 11.0));
-    vGlow = 0.5 * twinkle + near * 2.2 + alarm * 0.9 + uPulse * 0.55;
+    vGlow = 0.55 * twinkle + near * 1.4 + alarm * 0.6 + uPulse * 0.45;
     vKind = aKind;
-    gl_PointSize = (5.5 + near * 16.0 + aKind * 4.0 + alarm * 5.0 + uPulse * 2.5) * uPixel * (32.0 / -mv.z);
+    gl_PointSize = (4.6 + near * 8.0 + aKind * 2.0 + alarm * 2.5 + uPulse * 1.2) * uPixel * (32.0 / -mv.z);
     gl_Position = clip;
   }`;
 
@@ -59,12 +59,12 @@ const LINK_FRAG = `
   varying float vNear, vSeed, vEnd;
   void main() {
     // A packet of telemetry travelling along some links; all of them during a pulse.
-    float carries = max(step(0.68, fract(vSeed * 7.31)), uPulse);
+    float carries = max(step(0.78, fract(vSeed * 7.31)), uPulse);
     float head = fract(uTime * (0.18 + 0.2 * fract(vSeed * 3.7)) + vSeed);
     float packet = smoothstep(0.09, 0.0, abs(vEnd - head)) * carries;
-    float base = 0.13 + vNear * 0.55 + uPulse * 0.22;
+    float base = 0.16 + vNear * 0.5 + uPulse * 0.16;
     vec3 colour = mix(uLink, uPacket, clamp(packet + vNear * 0.4, 0.0, 1.0));
-    gl_FragColor = vec4(colour, (base + packet * 0.9) * uAlpha);
+    gl_FragColor = vec4(colour, (base + packet * 0.75) * uAlpha);
   }`;
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -95,7 +95,7 @@ async function main() {
   scene.add(field);
 
   // --- nodes ---
-  const count = innerWidth < 700 ? 80 : 150;
+  const count = innerWidth < 700 ? 70 : 120;
   const points = [];
   const positions = new Float32Array(count * 3);
   const seeds = new Float32Array(count);
@@ -107,7 +107,7 @@ async function main() {
     points.push(p);
     positions.set([p.x, p.y, p.z], i * 3);
     seeds[i] = Math.random();
-    kinds[i] = Math.random() < 0.045 ? 1 : 0; // a few nodes are mid-incident
+    kinds[i] = Math.random() < 0.03 ? 1 : 0; // a few nodes are mid-incident
   }
   const uniforms = {
     uTime: { value: 0 }, uPulse: { value: 0 }, uMouse: { value: new THREE.Vector2(9, 9) },
@@ -159,11 +159,11 @@ async function main() {
   // --- theme ---
   function applyTheme() {
     const dark = document.documentElement.dataset.theme !== "light";
-    uniforms.uNode.value.set(css("--accent-ink") || "#9fe03a");
+    uniforms.uNode.value.set(dark ? "#b4bccf" : "#5f6678");
     uniforms.uAlarm.value.set(css("--exhibit") || "#f5b41e");
-    uniforms.uLink.value.set(dark ? "#5d7bb8" : "#7d8bb0");
+    uniforms.uLink.value.set(dark ? "#5a6685" : "#9ea5b7");
     uniforms.uPacket.value.set(css("--accent") || "#76b900");
-    uniforms.uAlpha.value = dark ? 1 : 0.75;
+    uniforms.uAlpha.value = dark ? 0.9 : 0.8;
     for (const mat of [nodeMat, linkMat]) {
       mat.blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
       mat.needsUpdate = true;
@@ -210,10 +210,10 @@ async function main() {
     const t = clock.getElapsedTime();
     uniforms.uTime.value = t;
     uniforms.uMouse.value.lerp(target, 0.08);
-    uniforms.uPulse.value *= 0.965;
+    uniforms.uPulse.value *= 0.955;
     const lean = Math.abs(target.x) > 2 ? 0 : 1; // no lean while the pointer is away
-    field.rotation.y += ((target.x * 0.22 * lean + Math.sin(t * 0.05) * 0.18) - field.rotation.y) * 0.04;
-    field.rotation.x += ((-target.y * 0.12 * lean) - field.rotation.x) * 0.04;
+    field.rotation.y += ((target.x * 0.12 * lean + Math.sin(t * 0.04) * 0.12) - field.rotation.y) * 0.03;
+    field.rotation.x += ((-target.y * 0.07 * lean) - field.rotation.x) * 0.03;
     field.position.y += (scroll * 0.004 - field.position.y) * 0.06;
     render();
     requestAnimationFrame(frame);
