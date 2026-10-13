@@ -29,6 +29,52 @@
     `<button type="button" class="tag${ref[0] === "R" ? " ref" : ""}" data-ref="${esc(ref)}">${esc(ref)}</button>`;
   const withTags = (html) => html.replace(/\[([ER]\d+)\]/g, (_, ref) => tagHtml(ref));
 
+  // Hindsight's own glyphs live in the sprite in index.html.
+  const icon = (name) => `<svg class="ico" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  const TOOL_ICONS = { search_logs: "logs", get_trace: "trace", get_commit: "commit",
+    get_config: "config", get_infra_event: "infra" };
+  // Difficulty reads as incident severity: one bar is a SEV3, three a SEV1.
+  const SEV = { easy: 3, medium: 2, hard: 1 };
+  const sevHtml = (difficulty) => {
+    const sev = SEV[difficulty];
+    return sev
+      ? `<span class="sev s${sev}" title="${esc(difficulty)}"><i></i><i></i><i></i></span><span class="sev-label s${sev}">SEV${sev}</span>`
+      : `<span class="sev-label s0">${esc(difficulty || "")}</span>`;
+  };
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Tell the background scene something happened; it ignores this without WebGL.
+  const pulse = (strength) => dispatchEvent(new CustomEvent("hindsight:pulse", { detail: { strength } }));
+
+  // Count a number up to its value instead of snapping to it.
+  function countTo(el, value, format = (n) => String(Math.round(n))) {
+    if (reducedMotion) { el.textContent = format(value); return; }
+    const from = Number(el.dataset.value) || 0;
+    el.dataset.value = value;
+    const startedAt = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - startedAt) / 900);
+      el.textContent = format(from + (value - from) * (1 - (1 - k) ** 3));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function bump(el, text) {
+    if (el.textContent === String(text)) return;
+    el.textContent = text;
+    el.classList.remove("bump");
+    void el.offsetWidth;
+    el.classList.add("bump");
+  }
+
+  // Replay the entrance animation of a view each time it is shown.
+  function enter(view) {
+    view.classList.remove("view-in");
+    void view.offsetWidth;
+    view.classList.add("view-in");
+  }
+
   // ---------- home ----------
 
   function setNotice(el, message, bad) {
@@ -41,6 +87,7 @@
     closeStream();
     $("desk").hidden = true;
     $("home").hidden = false;
+    enter($("home"));
     document.title = "Hindsight";
     try {
       status = await api("/status");
@@ -54,6 +101,7 @@
       renderCases(incidents);
       renderRuns(runs);
       renderBoard(results);
+      renderStats(incidents, results);
     } catch (err) {
       setNotice($("notice"), `Could not load incidents: ${err.message}`, true);
     }
@@ -61,14 +109,14 @@
 
   function renderCases(incidents) {
     $("cases").innerHTML = incidents.map((inc, i) => `
-      <li><article class="case-card">
-        <div class="case-meta"><span>${esc(inc.difficulty)}</span><span>${esc(inc.services)} services</span>
+      <li><article class="case-card s${SEV[inc.difficulty] || 0}">
+        <div class="case-meta">${sevHtml(inc.difficulty)}<span>${esc(inc.services)} services</span>
           <span>${inc.source === "seed" ? `generated, seed ${esc(inc.seed)}` : "hand-written"}</span></div>
         <h3>${esc(inc.title)}</h3>
         <p>${esc(inc.description)}</p>
         <div class="case-actions">
-          <button type="button" data-case="${i}" ${status.ready ? "" : "disabled"}>Investigate</button>
-          <button type="button" class="quiet" data-reference="${i}">See the reference answer</button>
+          <button type="button" class="primary" data-case="${i}" ${status.ready ? "" : "disabled"}>${icon("triage")}Investigate</button>
+          <button type="button" class="quiet" data-reference="${i}">${icon("answer")}See the reference answer</button>
         </div>
       </article></li>`).join("");
     $("cases").onclick = (event) => {
@@ -155,6 +203,41 @@
       + (hasModel ? "" : " Results for the Nemotron investigator have not been recorded yet.");
   }
 
+  function renderStats(incidents, results) {
+    const accuracy = (kind) => results.filter((r) => r.kind === kind)
+      .map((r) => r.summary.root_cause_accuracy).filter((n) => n != null);
+    const oracle = accuracy("reference");
+    const shortcut = accuracy("baseline");
+    const pct = (n) => `${Math.round(n)}%`;
+    const set = (key, value, format) => {
+      const el = document.querySelector(`[data-count="${key}"]`);
+      if (value == null) el.textContent = "–";
+      else countTo(el, value, format);
+    };
+    set("stat-oracle", oracle.length ? 100 * Math.min(...oracle) : null, pct);
+    set("stat-shortcut", shortcut.length ? 100 * Math.max(...shortcut) : null, pct);
+    set("stat-cases", incidents.length);
+  }
+
+  // Cards lean toward the pointer and a light follows it across the glass.
+  $("cases").addEventListener("pointermove", (event) => {
+    const card = event.target.closest(".case-card");
+    if (!card || reducedMotion) return;
+    const box = card.getBoundingClientRect();
+    const x = (event.clientX - box.left) / box.width, y = (event.clientY - box.top) / box.height;
+    card.style.setProperty("--mx", `${x * 100}%`);
+    card.style.setProperty("--my", `${y * 100}%`);
+    card.style.setProperty("--ry", `${(x - 0.5) * 9}deg`);
+    card.style.setProperty("--rx", `${(0.5 - y) * 7}deg`);
+  });
+  $("cases").addEventListener("pointerout", (event) => {
+    const card = event.target.closest(".case-card");
+    if (card && !card.contains(event.relatedTarget)) {
+      card.style.setProperty("--rx", "0deg");
+      card.style.setProperty("--ry", "0deg");
+    }
+  });
+
   async function start(body, button, alwaysAllowed) {
     if (button) button.disabled = true;
     try {
@@ -195,6 +278,8 @@
     closeStream();
     $("home").hidden = true;
     $("desk").hidden = false;
+    enter($("desk"));
+    scrollTo({ top: 0 });
     run = { id, brief: null, entities: {}, lookups: 0, finished: false, report: "", positions: {} };
 
     $("desk-title").textContent = "Investigation";
@@ -212,6 +297,7 @@
     $("meter-lookups").textContent = "0";
     $("meter-calls").textContent = "0";
     $("meter-cost").textContent = money(0);
+    $("meter-cost").dataset.value = 0;
     setNotice($("desk-notice"), "");
     document.querySelectorAll("#rail li").forEach((li) => { li.className = ""; });
     setWorking("Opening the incident");
@@ -310,6 +396,7 @@
       li.classList.toggle("active", i === index);
     });
     setWorking(WORKING[phase] || "");
+    pulse(1);
   }
 
   function addToLedger(html) {
@@ -339,10 +426,11 @@
       return;
     }
     run.lookups += 1;
-    $("meter-lookups").textContent = run.lookups;
+    bump($("meter-lookups"), run.lookups);
+    pulse(0.35);
     const long = ev.result.split("\n").length > 6 || ev.result.length > 420;
     addToLedger(`<li class="exhibit" id="ex-${esc(ev.id)}">
-      <header>${tagHtml(ev.id)}<code>${esc(call)}</code></header>
+      <header>${tagHtml(ev.id)}${icon(TOOL_ICONS[ev.tool] || "logs")}<code>${esc(call)}</code></header>
       <pre>${colourLines(ev.result, ev.tool)}</pre>
       ${long ? '<button type="button" class="more" aria-expanded="false">Show all</button>' : ""}</li>`);
   }
@@ -354,13 +442,16 @@
       const label = $(`m-${role}`);
       if (label) label.textContent = shortModel(row.model);
     }
-    $("meter-calls").textContent = calls;
-    $("meter-cost").textContent = money(total);
+    bump($("meter-calls"), calls);
+    if (Number(total || 0) !== Number($("meter-cost").dataset.value || 0)) {
+      countTo($("meter-cost"), Number(total || 0), money);
+    }
   }
 
   function onDiagnosis(d) {
     const verdict = $("verdict");
-    verdict.className = "";
+    verdict.className = "reveal";
+    pulse(1.4);
     if (!d.root_cause_ids.length) {
       verdict.innerHTML = `<p class="cause-id">No cause named</p>
         <p class="summary">The evidence gathered was not enough to name what started this outage.</p>
@@ -381,7 +472,7 @@
       <span class="effect">${esc(hop.effect.replace(/_/g, " "))}</span><br>
       ${esc(hop.because)} ${hop.evidence.map(tagHtml).join(" ")}</li>`).join("");
     verdict.innerHTML = `
-      <h3>Root cause</h3>${causes}
+      <h3 class="cause-head">${icon("culprit")}Root cause</h3>${causes}
       <div class="confidence"><i><b style="width:${pct}%"></b></i><span>confidence ${pct}%</span></div>
       <p class="summary">${esc(d.summary)}</p>
       ${hops ? `<h3>How it spread</h3><ol class="hops">${hops}</ol>` : ""}
@@ -398,7 +489,9 @@
   function onGrade(g) {
     const rows = (g.rubrics || []).map((r) =>
       `<tr><td>${esc(r.rubric.replace(/_/g, " "))}</td><td>${Number(r.raw_score).toFixed(2)} × ${Number(r.weight).toFixed(2)}</td></tr>`).join("");
+    pulse(g.cause_correct ? 1 : 0.6);
     $("grade").innerHTML = `<div class="grade${g.cause_correct ? "" : " wrong"}">
+      <svg class="ico seal" aria-hidden="true"><use href="#i-seal"/></svg>
       <h3 style="margin-top:0">Graded against the known answer</h3>
       <p class="score">${Number(g.score).toFixed(3)}</p>
       <p class="verdict">Root cause ${g.cause_correct ? "correct" : "wrong"}</p>
@@ -623,14 +716,49 @@
   });
 
   $("copy-md").addEventListener("click", async () => {
+    const label = $("copy-md").querySelector("span");
     try {
       await navigator.clipboard.writeText(run.report);
-      $("copy-md").textContent = "Copied";
+      label.textContent = "Copied";
     } catch {
-      $("copy-md").textContent = "Copy failed";
+      label.textContent = "Copy failed";
     }
-    setTimeout(() => { $("copy-md").textContent = "Copy Markdown"; }, 1600);
+    setTimeout(() => { label.textContent = "Copy Markdown"; }, 1600);
   });
+
+  // ---------- theme ----------
+
+  function syncThemeButton() {
+    const light = document.documentElement.dataset.theme === "light";
+    $("theme-toggle").setAttribute("aria-label", `Switch to ${light ? "dark" : "light"} theme`);
+  }
+  $("theme-toggle").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("hindsight-theme", next); } catch { /* storage blocked */ }
+    syncThemeButton();
+    dispatchEvent(new CustomEvent("hindsight:theme"));
+  });
+  syncThemeButton();
+
+  // The spotlight behind the page follows the pointer.
+  if (!reducedMotion) {
+    let queued = false, px = 0, py = 0;
+    addEventListener("pointermove", (event) => {
+      px = event.clientX; py = event.clientY;
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        document.documentElement.style.setProperty("--px", `${px}px`);
+        document.documentElement.style.setProperty("--py", `${py}px`);
+      });
+    }, { passive: true });
+  }
+
+  // The old PostmortemEnv console is only linked where it is installed.
+  fetch("/manifest.json").then((r) => r.json())
+    .then((m) => { $("lab-link").hidden = !m.lab; }).catch(() => {});
 
   function route() {
     const match = location.hash.match(/^#\/i\/([\w-]+)/);

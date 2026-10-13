@@ -5,29 +5,134 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hindsight</title>
 <meta name="description" content="Hindsight investigates a production incident from its telemetry and writes the postmortem, with every claim tied to the evidence behind it.">
+<meta name="color-scheme" content="dark light">
+<script>
+  // Set the theme before first paint so the page never flashes the wrong one.
+  (() => {
+    let saved = null;
+    try { saved = localStorage.getItem("hindsight-theme"); } catch { /* storage blocked */ }
+    const theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/copilot/copilot.css">
 </head>
 <body>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div class="scene-veil" aria-hidden="true"></div>
+<div class="spotlight" aria-hidden="true"></div>
+
+<!-- Hindsight's own glyphs. Every one is drawn on the exhibit tag: the
+     clipped-corner label that ties each claim to its evidence. -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <path id="g-tag" d="M3.5 3.5h17v11.2l-5.8 5.8H3.5z"/>
+  </defs>
+  <symbol id="i-mark" viewBox="0 0 24 24">
+    <use href="#g-tag"/>
+    <path d="M15.5 9.6a4.2 4.2 0 1 0-1.2 4.4"/><path d="M15.9 6.8v3h-3"/>
+    <circle cx="11.6" cy="11.4" r="1.1" class="dot"/>
+  </symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M7 8h10M7 11.5h6.5M7 15h4"/><path d="M15.5 11.5h1.6" class="hot"/>
+  </symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M6.5 7.5h6M9 11h6.5M12 14.5h3.2"/><path d="M6.5 6v10" class="thin"/>
+  </symbol>
+  <symbol id="i-commit" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M9 3.5v4.3M9 12.7v7.8"/><circle cx="9" cy="10.2" r="2.4"/>
+    <path d="M14 8.5h3.5M15.75 6.75v3.5M14 13.5h3.5" class="hot"/>
+  </symbol>
+  <symbol id="i-config" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M6.5 8.5h11M6.5 13.5h7.5"/>
+    <rect x="12.2" y="7" width="2.4" height="3" class="fill"/><rect x="7.6" y="12" width="2.4" height="3" class="fill"/>
+  </symbol>
+  <symbol id="i-infra" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M6.5 7.5h11v3.5h-11zM6.5 11h8"/><path d="M12.6 12.4l-1.8 3h2.6l-1.6 2.8" class="hot"/>
+  </symbol>
+  <symbol id="i-triage" viewBox="0 0 24 24">
+    <path d="M3.5 3.5h11v7.4l-3.6 3.6H3.5z"/><path d="M13.2 13.2l6.8 6.8"/><path d="M6.5 7.5h5M6.5 10.5h3"/>
+  </symbol>
+  <symbol id="i-diagnose" viewBox="0 0 24 24">
+    <rect x="3.5" y="3.5" width="5" height="5" class="fill"/><rect x="9.5" y="9.5" width="5" height="5"/>
+    <path d="M15.5 15.5h5v2.6l-2.4 2.4h-2.6z"/><path d="M8.5 6h3.5v3.5M14.5 12h3.5v3.5"/>
+  </symbol>
+  <symbol id="i-research" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M3.5 12h17M12 3.5c-3.2 4.6-3.2 12.4 0 17M12 3.5c3.2 4.6 3.2 9.5 1.6 13.5"/>
+  </symbol>
+  <symbol id="i-report" viewBox="0 0 24 24">
+    <path d="M5 2.5h14v13.2l-5.8 5.8H5z"/><path d="M8 7h8M8 10.5h8M8 14h4.5"/><path d="M13.2 21.5v-5.8h5.8" class="hot"/>
+  </symbol>
+  <symbol id="i-culprit" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="7.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="2.3" class="fill"/>
+  </symbol>
+  <symbol id="i-seal" viewBox="0 0 24 24">
+    <path d="M8.2 2.8h7.6l5.4 5.4v7.6l-5.4 5.4H8.2l-5.4-5.4V8.2z"/><path d="M7.8 12.2l2.9 2.9 5.5-6"/>
+  </symbol>
+  <symbol id="i-answer" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M7.5 11.5l3 3 5.5-6"/>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M12 16.5v-9M8.5 11l3.5-3.5 3.5 3.5"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M12 7v8.5M8.5 12l3.5 3.5 3.5-3.5"/>
+  </symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24">
+    <path d="M8 3.5h12.5v9.6l-4.4 4.4H8z"/><path d="M8 7.5H3.5v13h10.5V17.5"/>
+  </symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M3.5 20.5L20.5 3.5v11.2l-5.8 5.8z" class="fill"/>
+  </symbol>
+  <symbol id="i-source" viewBox="0 0 24 24">
+    <use href="#g-tag"/><path d="M9.5 8.5L6.5 12l3 3.5M14.5 8.5l3 3.5-3 3.5"/>
+  </symbol>
+</svg>
+
 <header class="bar">
   <a class="brand" href="#/" aria-label="Hindsight home">
-    <span class="brand-mark" aria-hidden="true">E</span>
+    <svg class="brand-mark" aria-hidden="true"><use href="#i-mark"/></svg>
     <span class="brand-name">Hindsight</span>
   </a>
   <p class="bar-note" id="bar-note"></p>
   <nav class="bar-nav">
     <a href="#/">Incidents</a>
-    <a href="/lab">Benchmark lab</a>
+    <a href="/lab" id="lab-link" hidden>Benchmark lab</a>
+    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch to light theme">
+      <svg class="ico" aria-hidden="true"><use href="#i-theme"/></svg>
+    </button>
   </nav>
 </header>
 
 <main id="home" class="home" hidden>
   <section class="intro">
-    <h1>The postmortem,<br>with its evidence.</h1>
+    <p class="kicker"><span class="live-dot" aria-hidden="true"></span>Incident investigation on NVIDIA Nemotron</p>
+    <h1>The postmortem,<br><span class="glow">with its evidence.</span></h1>
     <p class="lede">Hand Hindsight an incident. It reads the logs, traces, commits and config changes, names what started the outage, and writes the postmortem. Every claim carries a tag back to the evidence it came from.</p>
     <div class="notice" id="notice" hidden></div>
+    <dl class="stats" id="stats" aria-label="Measured so far">
+      <div><dt>Ceiling, oracle given the answer</dt><dd data-count="stat-oracle">–</dd></div>
+      <div><dt>Best shortcut without a model</dt><dd data-count="stat-shortcut">–</dd></div>
+      <div><dt>Nemotron models, one per job</dt><dd>3</dd></div>
+      <div><dt>Sample incidents ready to open</dt><dd data-count="stat-cases">–</dd></div>
+    </dl>
+  </section>
+
+  <section class="how" aria-labelledby="how-h">
+    <h2 id="how-h" class="visually-hidden">How it works</h2>
+    <ol class="steps">
+      <li class="m-triage-c"><svg class="ico" aria-hidden="true"><use href="#i-triage"/></svg>
+        <b>Triage</b><span>Nemotron Nano picks each lookup: logs, traces, commits, configs.</span></li>
+      <li class="m-reason-c"><svg class="ico" aria-hidden="true"><use href="#i-diagnose"/></svg>
+        <b>Diagnosis</b><span>Nemotron Ultra reads the evidence and names the cause and how it spread.</span></li>
+      <li class="m-research-c"><svg class="ico" aria-hidden="true"><use href="#i-research"/></svg>
+        <b>Research</b><span>Searches published guidance, with nothing internal in the query.</span></li>
+      <li class="m-writer-c"><svg class="ico" aria-hidden="true"><use href="#i-report"/></svg>
+        <b>Postmortem</b><span>Nemotron Super writes it. Facts and citations are assembled in code.</span></li>
+    </ol>
   </section>
 
   <section class="intake" aria-labelledby="intake-h">
@@ -35,7 +140,7 @@
       <h2 id="intake-h">Open an incident</h2>
       <label class="upload">
         <input type="file" id="bundle-file" accept="application/json,.json">
-        <span>Upload your own incident bundle</span>
+        <span><svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg>Upload your own incident bundle</span>
       </label>
     </div>
     <p class="hint">Sample incidents have a known answer, so the investigation is graded when it finishes. Your own bundle is investigated the same way and never graded. <a href="/static/copilot/bundle-format.html">Bundle format</a></p>
@@ -45,7 +150,7 @@
   <section class="measured" id="measured" aria-labelledby="measured-h" hidden>
     <div class="section-head"><h2 id="measured-h">How often it finds the cause</h2></div>
     <p class="hint">Share of generated incidents where the root cause named was the real one. The investigator never sees the answer, and a fixed rubric does the scoring, not a model. The first rows are the shortcuts a hurried engineer reaches for.</p>
-    <div class="table-scroll"><table class="board" id="board"></table></div>
+    <div class="table-scroll glass"><table class="board" id="board"></table></div>
     <p class="hint" id="board-note"></p>
   </section>
 
@@ -63,10 +168,10 @@
       <h1 id="desk-title">Investigation</h1>
     </div>
     <ol class="rail" id="rail" aria-label="Investigation stages">
-      <li data-phase="triage"><span>Triage</span><small id="m-triage"></small></li>
-      <li data-phase="diagnosis"><span>Diagnosis</span><small id="m-reason"></small></li>
-      <li data-phase="research"><span>Research</span><small>web search</small></li>
-      <li data-phase="report"><span>Postmortem</span><small id="m-writer"></small></li>
+      <li data-phase="triage"><svg class="ico" aria-hidden="true"><use href="#i-triage"/></svg><span>Triage</span><small id="m-triage"></small></li>
+      <li data-phase="diagnosis"><svg class="ico" aria-hidden="true"><use href="#i-diagnose"/></svg><span>Diagnosis</span><small id="m-reason"></small></li>
+      <li data-phase="research"><svg class="ico" aria-hidden="true"><use href="#i-research"/></svg><span>Research</span><small>web search</small></li>
+      <li data-phase="report"><svg class="ico" aria-hidden="true"><use href="#i-report"/></svg><span>Postmortem</span><small id="m-writer"></small></li>
     </ol>
     <dl class="meter" id="meter" aria-label="Cost so far">
       <div><dt>Lookups</dt><dd id="meter-lookups">0</dd></div>
@@ -111,14 +216,21 @@
     <div class="section-head">
       <h2 id="doc-h">Postmortem</h2>
       <div class="doc-actions">
-        <button type="button" id="copy-md">Copy Markdown</button>
-        <a class="button" id="download-md" href="#">Download .md</a>
+        <button type="button" id="copy-md"><svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy Markdown</span></button>
+        <a class="button" id="download-md" href="#"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>Download .md</a>
       </div>
     </div>
     <article class="doc" id="doc"></article>
   </section>
 </main>
 
+<footer class="foot">
+  <span class="foot-mark"><svg class="ico" aria-hidden="true"><use href="#i-mark"/></svg>Hindsight</span>
+  <span>Built on NVIDIA Nemotron, served by Nebius Token Factory</span>
+  <a href="https://github.com/jacklachan/Nebius-x-NVIDIA" target="_blank" rel="noopener noreferrer"><svg class="ico" aria-hidden="true"><use href="#i-source"/></svg>Source</a>
+</footer>
+
 <script src="/static/copilot/copilot.js"></script>
+<script type="module" src="/static/copilot/scene.js"></script>
 </body>
 </html>

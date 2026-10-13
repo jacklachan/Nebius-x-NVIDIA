@@ -158,7 +158,7 @@ def test_recordings_load_from_disk_and_are_marked(tmp_path, monkeypatch):
 def test_product_ui_is_served_at_root_and_lab_keeps_the_old_console(client):
     home = client.get("/")
     assert home.status_code == 200 and "<title>Hindsight</title>" in home.text
-    for asset in ("copilot.css", "copilot.js", "bundle-format.html"):
+    for asset in ("copilot.css", "copilot.js", "scene.js", "bundle-format.html"):
         assert client.get(f"/static/copilot/{asset}").status_code == 200
     lab = client.get("/lab")
     assert lab.status_code == 200 and "Hindsight" not in lab.text
