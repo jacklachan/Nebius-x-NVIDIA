@@ -34,3 +34,6 @@ archive/
 analysis_results*.md
 PROJECT_REVIEW.md
 active_jobs.txt
+
+# Output of scripts/make_demo_incident.py (nested git repos)
+demo/
