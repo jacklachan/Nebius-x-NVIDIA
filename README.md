@@ -6,7 +6,9 @@
 
 Built for the Nebius x NVIDIA Global AI Hackathon. It runs on NVIDIA Nemotron models served by Nebius Token Factory.
 
-> **Status: in development.** The pipeline, API and UI work end to end and are covered by tests. Benchmark numbers against real Nemotron models are not in this README yet; they will be added when the runs are done, not before.
+**Live demo:** https://huggingface.co/spaces/Auenchanters/hindsight (the app itself is at https://auenchanters-hindsight.hf.space). Every sample incident there has **See the reference answer**, which shows the whole flow without spending anything.
+
+> **Status: in development.** The pipeline, API, MCP server and UI work end to end and are covered by tests. Benchmark numbers against real Nemotron models are not in this README yet; they will be added when the runs are done, not before.
 
 ## What it does
 
@@ -56,6 +58,8 @@ cp .env.example .env                                        # then add your keys
 
 Put a Nebius Token Factory key in `.env` as `NEBIUS_API_KEY`. `TAVILY_API_KEY` is optional and enables the research step.
 
+The client speaks the OpenAI chat-completions protocol, so for development it also runs against NVIDIA's own API (build.nvidia.com): set `NEBIUS_BASE_URL=https://integrate.api.nvidia.com/v1`, put the NVIDIA key in `NEBIUS_API_KEY`, and set the three `COPILOT_MODEL_*` IDs to NVIDIA's names (see [.env.example](.env.example)). The submitted app calls Token Factory.
+
 ```bash
 # Check the configured Nemotron models exist on your account
 python -m copilot models
@@ -67,8 +71,14 @@ uvicorn app:app --port 7860
 python -m copilot investigate --seed 42 --difficulty medium --out postmortem.md
 
 # Your own incident: build a bundle from git history and log files, then investigate it
-python -m copilot bundle --start 2026-10-01T10:00:00Z --end 2026-10-01T10:20:00Z     --repo api=../api --repo web=../web --logs api=logs/api.log     --services services.json --out my_incident.json
+python -m copilot bundle --start 2026-10-01T10:00:00Z --end 2026-10-01T10:20:00Z \
+    --repo api=../api --repo web=../web --logs api=logs/api.log \
+    --services services.json --out my_incident.json
 python -m copilot investigate --file my_incident.json --out postmortem.md
+
+# A reproduced outage from real git repos (web -> orders -> payments), with a known answer
+python scripts/make_demo_incident.py
+python -m copilot investigate --file demo/checkout-incident/incident.json --out postmortem.md
 
 # Score the investigator on 20 generated incidents
 python -m copilot bench --seeds 0-19 --difficulty medium --out benchmarks/routed-medium.json
