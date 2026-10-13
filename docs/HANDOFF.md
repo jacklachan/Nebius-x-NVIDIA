@@ -12,6 +12,36 @@ We are entering the **Nebius x NVIDIA Global AI Hackathon** with **Hindsight**: 
 - **Keys:** we have an **NVIDIA API key** (build.nvidia.com). The teammate who holds it puts it in; see "Step 1" below. We still have **no Nebius Token Factory key**, which the submission needs.
 - **Still not done:** it has never run against a real Nemotron model. Everything that needs real model output is still open, and that is the main risk. The NVIDIA key unblocks all of it except the final Token Factory runs.
 
+### Remaining work at a glance
+
+Details for each item are under "What is left, in order" below.
+
+**With the NVIDIA key (start here)**
+
+- [ ] Put the key in `.env` and check the models (step 1).
+- [ ] Run one investigation, read it, tune the prompts for what actually fails (step 2.1–2.4). Biggest risk: it has never run on a real model.
+- [ ] Benchmark in small steps. Nemotron must clearly beat the 51% "blame the latest change on the worst-hit service" shortcut on medium (step 2.5).
+- [ ] Routing ablation: routed against Ultra-only and Super-only on the same seeds (step 2.6).
+- [ ] Run the checkout demo incident from a coding agent over MCP. This is the video's centrepiece (step 4).
+- [ ] Keep notes for `docs/FEEDBACK.md` as you go: what failed, latency, docs gaps.
+
+**When the Nebius Token Factory key arrives (chase the organizers on 20 October if not)**
+
+- [ ] Re-run the benchmark and recordings on Token Factory; only those numbers and costs go in the README (step 1b, 2.7–2.8).
+- [ ] Add the key to the Space with `hf spaces secrets add Auenchanters/hindsight --secrets-file .env`, commit the recordings, run `bash space/deploy.sh`.
+- [ ] Optional: a Tavily key turns on the research step and the $3,000 bonus.
+
+**No key needed (can be done any time)**
+
+- [ ] Devpost text: what it does, how it uses Nemotron and Token Factory, track Coding and Agentic Engineering, demo URL. Leave the numbers as placeholders until step 2.
+- [ ] Video script, under 3 minutes: checkout incident from a coding agent → postmortem with evidence tags → leaderboard and routing cost table → one line on Token Factory.
+- [ ] `docs/FEEDBACK.md`: a template with headings for Token Factory (setup, API, docs, rate limits, latency) and the models (Nano, Super, Ultra: format following, reasoning, quality), filled in during the runs.
+- [ ] Small polish: on narrower incident cards the two buttons stack on two lines; `copilot/llm.py` opens a new HTTP connection per model call (works, just slower; reuse one client per investigation).
+
+**Ship (26–29 October; submit on the 29th)**
+
+- [ ] Record the video, publish it on YouTube (public), submit on Devpost, and tick every box in the submission checklist below.
+
 ### Decided since 8 October
 
 - **Name:** Hindsight. Final.
