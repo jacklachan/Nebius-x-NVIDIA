@@ -14,9 +14,12 @@ import spaces
 # ponytail: the Space image installs gradio[mcp], which pins mcp<2, while
 # Hindsight's MCP server needs mcp 2, so the build cannot ask for it. Upgrade
 # at boot (a few seconds per cold start); Gradio's own MCP support is unused.
-# Drop this when gradio allows mcp 2 or the Space moves to the Docker SDK.
+# Pinned to the version the tests run on, so a new release cannot break a
+# restart mid-judging. Drop this when gradio allows mcp 2 or the Space moves
+# to the Docker SDK.
+MCP_VERSION = "2.3.0"
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--root-user-action=ignore",
-                "mcp>=2.0,<3"], check=True)
+                f"mcp=={MCP_VERSION}"], check=True)
 # `import spaces` already loaded mcp 1 through gradio; forget it so the app
 # imports mcp 2 from disk instead of a mix of both.
 for name in [m for m in sys.modules if m == "mcp" or m.startswith("mcp.")]:

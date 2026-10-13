@@ -176,9 +176,22 @@ def test_hosted_guard_limits_concurrency(monkeypatch):
     import web.mcp_mount as mount
 
     monkeypatch.setattr(api, "store", api._Store())
-    monkeypatch.setattr(mount, "_running", api.MAX_CONCURRENT)
+    api.store.external = api.MAX_CONCURRENT
     result = _call_with_guard("investigate_incident", {"bundle": BUNDLE}, mount.spend_guard)
     assert result.is_error and "Other investigations are running" in result.content[0].text
+
+
+def test_web_and_mcp_runs_share_one_concurrency_limit(monkeypatch):
+    import web.copilot_api as api
+
+    monkeypatch.setattr(api, "store", api._Store())
+    api.store.external = api.MAX_CONCURRENT     # MCP callers hold every slot
+    try:
+        api.store.admit()
+    except api.HTTPException as exc:
+        assert exc.status_code == 429
+    else:
+        raise AssertionError("a web run was admitted past the shared limit")
 
 
 def _call_with_guard(tool, args, guard):

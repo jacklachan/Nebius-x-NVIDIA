@@ -129,8 +129,8 @@ class TokenFactoryClient:
         truncated = choices[0].get("finish_reason") == "length"
 
         usage = data.get("usage") or {}
-        input_tokens = int(usage.get("prompt_tokens", 0))
-        output_tokens = int(usage.get("completion_tokens", 0))
+        input_tokens = int(usage.get("prompt_tokens") or 0)
+        output_tokens = int(usage.get("completion_tokens") or 0)
         result = ChatResult(
             text=text,
             role=role,

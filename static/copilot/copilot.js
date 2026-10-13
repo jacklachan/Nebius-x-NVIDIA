@@ -644,12 +644,17 @@
     const lines = markdown.split("\n");
     const out = [];
     let i = 0;
-    const cells = (row) => row.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+    // Split on unescaped pipes only: report.py writes "\|" for a pipe inside a cell.
+    const cells = (row) => row.replace(/^\||\|$/g, "").split(/(?<!\\)\|/)
+      .map((c) => c.trim().replace(/\\\|/g, "|"));
     while (i < lines.length) {
       const line = lines[i];
       if (line.startsWith("```")) {
+        // The closing fence matches the opening one, which report.py makes
+        // longer than any backticks inside the block.
+        const fence = line.match(/^`+/)[0];
         const code = [];
-        for (i += 1; i < lines.length && !lines[i].startsWith("```"); i += 1) code.push(lines[i]);
+        for (i += 1; i < lines.length && lines[i].trim() !== fence; i += 1) code.push(lines[i]);
         out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
         i += 1;
       } else if (/^#{1,3} /.test(line)) {
@@ -720,7 +725,7 @@
 
   function syncThemeButton() {
     const light = document.documentElement.dataset.theme === "light";
-    $("theme-toggle").setAttribute("aria-label", `Switch to ${light ? "dark" : "light"} theme`);
+    $("theme-toggle").setAttribute("aria-pressed", String(light));
   }
   $("theme-toggle").addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";

@@ -91,6 +91,11 @@ def private_terms(brief: dict[str, Any]) -> set[str]:
     return {t.lower() for t in terms if len(t) >= 3}
 
 
+def _is_private(query: str, banned: set[str]) -> bool:
+    lowered = query.lower()
+    return bool(_EMAIL_RE.search(query)) or any(term in lowered for term in banned)
+
+
 def safe_queries(queries: Any, brief: dict[str, Any]) -> list[str]:
     """Keep only queries that carry nothing incident-specific."""
     banned = private_terms(brief)
@@ -99,14 +104,18 @@ def safe_queries(queries: Any, brief: dict[str, Any]) -> list[str]:
         if not isinstance(query, str):
             continue
         query = " ".join(query.split())[:200]
-        lowered = query.lower()
-        if len(query) < 8 or _EMAIL_RE.search(query):
-            continue
-        if any(term in lowered for term in banned):
+        if len(query) < 8 or _is_private(query, banned):
             continue
         if query not in kept:
             kept.append(query)
     return kept[:MAX_QUERIES]
+
+
+def count_private(queries: Any, brief: dict[str, Any]) -> int:
+    """How many proposed queries were withheld for naming the incident."""
+    banned = private_terms(brief)
+    return sum(1 for q in (queries if isinstance(queries, list) else [])
+               if isinstance(q, str) and _is_private(q, banned))
 
 
 class Researcher:
@@ -136,7 +145,8 @@ class Researcher:
         except ValueError:
             proposed = []
         self.queries = safe_queries(proposed, brief)
-        self.dropped = (len(proposed) if isinstance(proposed, list) else 0) - len(self.queries)
+        # Only privacy drops are reported; duplicates and fragments are not news.
+        self.dropped = count_private(proposed, brief)
 
         references: list[Reference] = []
         seen_urls: set[str] = set()

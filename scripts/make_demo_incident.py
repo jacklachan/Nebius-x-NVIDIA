@@ -319,7 +319,10 @@ def make_logs(rng: random.Random) -> dict[str, list[str]]:
 
 
 def build(out: Path, seed: int = 7) -> dict:
-    if out.exists():
+    if out.exists() and any(out.iterdir()):
+        # Only ever replace a previous run of this script, never some other folder.
+        if not (out / "services.json").is_file() or not (out / "payments" / ".git").is_dir():
+            raise SystemExit(f"{out} is not empty and is not a demo incident; refusing to delete it.")
         shutil.rmtree(out, onerror=lambda f, p, _: (os.chmod(p, 0o700), f(p)))
     culprit = make_repos(out)
     (out / "logs").mkdir()

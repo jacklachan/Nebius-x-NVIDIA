@@ -42,25 +42,20 @@ def transport_security() -> TransportSecuritySettings:
         enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins)
 
 
-_running = 0
-
-
 @asynccontextmanager
 async def spend_guard():
-    """Hold MCP callers to the same limits as the web UI: both spend the
-    server's own Token Factory key."""
-    global _running
-    if _running >= api.MAX_CONCURRENT:
-        raise ToolError("Other investigations are running. Try again in a minute.")
+    """Hold MCP callers to the same limits as the web UI, counted together:
+    both spend the server's own Token Factory key."""
+    store = api.store
     try:
-        api.store.admit()
+        store.admit()
     except HTTPException as exc:
         raise ToolError(str(exc.detail)) from exc
-    _running += 1
+    store.external += 1
     try:
         yield
     finally:
-        _running -= 1
+        store.external -= 1
 
 
 class _Gateway:

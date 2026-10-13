@@ -95,6 +95,7 @@ class Investigation:
 class _Store:
     def __init__(self) -> None:
         self.items: dict[str, Investigation] = {}
+        self.external = 0                  # paid runs started elsewhere (MCP)
         self._day = ""
         self._started_today = 0
 
@@ -112,7 +113,9 @@ class _Store:
         today = time.strftime("%Y-%m-%d")
         if today != self._day:
             self._day, self._started_today = today, 0
-        running = sum(1 for i in self.items.values() if i.status == "running")
+        # Reference runs cost nothing, so they neither count nor are counted.
+        running = self.external + sum(
+            1 for i in self.items.values() if i.status == "running" and not i.reference)
         if running >= MAX_CONCURRENT:
             raise HTTPException(429, "Other investigations are running. Try again in a minute.")
         if self._started_today >= MAX_PER_DAY:
@@ -317,11 +320,14 @@ async def postmortem(investigation_id: str) -> PlainTextResponse:
 async def events(investigation_id: str, request: Request) -> StreamingResponse:
     inv = _get(investigation_id)
     queue: asyncio.Queue = asyncio.Queue()
-    inv.subscribers.append(queue)
-    backlog = list(inv.events)
-    finished = inv.status != "running"
 
     async def stream() -> AsyncGenerator[bytes, None]:
+        # Subscribe only once the response is streaming, so a client that
+        # never reads cannot leave a queue behind. No await between taking
+        # the backlog and subscribing, so no event falls in between.
+        inv.subscribers.append(queue)
+        backlog = list(inv.events)
+        finished = inv.status != "running"
         try:
             for event in backlog:
                 yield _sse(event)
@@ -359,16 +365,31 @@ class BodyLimit:
         self.app, self.prefix, self.max_bytes = app, prefix, max_bytes
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
-        if scope["type"] == "http" and scope["path"].startswith(self.prefix):
-            length = dict(scope["headers"]).get(b"content-length", b"0")
-            if length.isdigit() and int(length) > self.max_bytes:
-                body = json.dumps({"detail": "Request body is too large."}).encode()
-                await send({"type": "http.response.start", "status": 413,
-                            "headers": [(b"content-type", b"application/json"),
-                                        (b"content-length", str(len(body)).encode())]})
-                await send({"type": "http.response.body", "body": body})
-                return
-        await self.app(scope, receive, send)
+        if scope["type"] != "http" or not scope["path"].startswith(self.prefix):
+            await self.app(scope, receive, send)
+            return
+        length = dict(scope["headers"]).get(b"content-length", b"0")
+        if length.isdigit() and int(length) > self.max_bytes:
+            body = json.dumps({"detail": "Request body is too large."}).encode()
+            await send({"type": "http.response.start", "status": 413,
+                        "headers": [(b"content-type", b"application/json"),
+                                    (b"content-length", str(len(body)).encode())]})
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # A chunked upload declares no length; count what arrives instead.
+        received = 0
+
+        async def counted() -> dict:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(413, "Request body is too large.")
+            return message
+
+        await self.app(scope, counted, send)
 
 
 def _sse(event: dict[str, Any]) -> bytes:

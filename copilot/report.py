@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from typing import Any
 
 from copilot.config import ROLE_WRITER
 from copilot.core import ChatModel, Diagnosis, brief_text, clip, ledger_text
 from copilot.llm import extract_json
 from copilot.research import Reference, references_text
-from copilot.workspace import Evidence
+from copilot.workspace import Evidence, _when
 
 PRIORITIES = ("P0", "P1", "P2")
 
@@ -104,15 +103,9 @@ def fallback_narrative(brief: dict[str, Any], diagnosis: Diagnosis) -> dict[str,
     return _clean_narrative({}, brief, diagnosis)
 
 
-def _parse(ts: str) -> datetime | None:
-    try:
-        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 def _duration(window: dict[str, str]) -> str:
-    start, end = _parse(window.get("start", "")), _parse(window.get("end", ""))
+    # _when makes every time zone-aware, so a "Z" start and a bare end still subtract.
+    start, end = _when(window.get("start")), _when(window.get("end"))
     if not start or not end:
         return "unknown"
     minutes = int((end - start).total_seconds() // 60)
@@ -138,6 +131,19 @@ def _entities(brief: dict[str, Any]) -> dict[str, dict[str, str]]:
 
 def _cites(ids: list[str]) -> str:
     return " ".join(f"[{i}]" for i in ids) if ids else "_(no evidence cited)_"
+
+
+def _cell(text: str) -> str:
+    """Model prose in a table cell: a bare '|' would start a new column."""
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _fenced(text: str) -> list[str]:
+    """A code block whose fence is longer than any run of backticks inside it,
+    so a diff of a Markdown file cannot close it early."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [fence, text, fence]
 
 
 def render_postmortem(
@@ -210,7 +216,7 @@ def render_postmortem(
         lines += ["## Action items", "", "| Priority | Action | Why |", "|---|---|---|"]
         order = {p: i for i, p in enumerate(PRIORITIES)}
         for item in sorted(narrative["action_items"], key=lambda a: order[a["priority"]]):
-            lines.append(f"| {item['priority']} | {item['action']} | {item['why']} |")
+            lines.append(f"| {item['priority']} | {_cell(item['action'])} | {_cell(item['why'])} |")
         lines.append("")
 
     if diagnosis.ruled_out:
@@ -236,7 +242,7 @@ def render_postmortem(
     lines += ["## Evidence", ""]
     for e in kept:
         args = ", ".join(f"{k}={v}" for k, v in e.args.items())
-        lines += [f"**[{e.id}]** `{e.tool}({args})`", "", "```", clip(e.result, 1200), "```", ""]
+        lines += [f"**[{e.id}]** `{e.tool}({args})`", "", *_fenced(clip(e.result, 1200)), ""]
 
     if usage and usage.get("by_role"):
         lines += ["## Investigation cost", "", "| Stage | Model | Calls | Tokens in / out | Cost |",

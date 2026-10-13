@@ -95,16 +95,20 @@ def error_onset(scenario: dict[str, Any]) -> list[dict[str, Any]]:
     that failed first is usually nearer the cause than the one failing most.
     Computed from the logs alone."""
     window = scenario.get("incident_window") or {}
-    start, end = str(window.get("start", "")), str(window.get("end", "")) or "~"
-    rows = []
+    start, end = _when(window.get("start")), _when(window.get("end"))
+    found = []
     for service, entries in (scenario.get("logs") or {}).items():
-        loud = sorted(str(e.get("timestamp", "")) for e in entries
-                      if str(e.get("level", "")).upper() in _LOUD
-                      and start <= str(e.get("timestamp", "")) <= end)
+        # Compare as times, not strings: bundles write ISO times in more than one form.
+        loud = sorted(
+            (moment, str(e.get("timestamp", ""))) for e in entries
+            if str(e.get("level", "")).upper() in _LOUD
+            and (moment := _when(e.get("timestamp"))) is not None
+            and (start is None or moment >= start) and (end is None or moment <= end))
         if loud:
-            rows.append({"service": service, "first_error": loud[0], "errors": len(loud)})
-    rows.sort(key=lambda r: (r["first_error"], r["service"]))
-    return rows
+            first_at, first_error = loud[0]
+            found.append((first_at, service,
+                          {"service": service, "first_error": first_error, "errors": len(loud)}))
+    return [row for *_, row in sorted(found, key=lambda f: f[:2])]
 
 
 @dataclass

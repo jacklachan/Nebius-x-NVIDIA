@@ -288,16 +288,19 @@ class Investigator:
             if i in candidates and i not in root_ids:
                 root_ids.append(i)
 
+        # Models sometimes put a list or an object where a string belongs;
+        # check the type before using a value as a set key.
         chain = []
         for hop in raw.get("chain") if isinstance(raw.get("chain"), list) else []:
-            if not isinstance(hop, dict) or hop.get("service") not in services:
+            if not isinstance(hop, dict) or not isinstance(hop.get("service"), str) \
+                    or hop["service"] not in services:
                 continue
             cited = hop.get("evidence") if isinstance(hop.get("evidence"), list) else []
             chain.append({
                 "service": hop["service"],
                 "effect": snap_effect(str(hop.get("effect", ""))),
                 "because": str(hop.get("because", ""))[:400],
-                "evidence": [c for c in cited if c in evidence_ids],
+                "evidence": [c for c in cited if isinstance(c, str) and c in evidence_ids],
             })
 
         try:
@@ -308,7 +311,7 @@ class Investigator:
         ruled_out = [
             {"id": str(r.get("id", "")), "why": str(r.get("why", ""))[:300]}
             for r in (raw.get("ruled_out") if isinstance(raw.get("ruled_out"), list) else [])
-            if isinstance(r, dict) and r.get("id") in candidates
+            if isinstance(r, dict) and isinstance(r.get("id"), str) and r["id"] in candidates
         ]
         questions = [
             str(q)[:300]
